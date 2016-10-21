@@ -328,15 +328,21 @@ module Generator =
                             if isLocal then return rt
                             else return sprintf "ModRef<%s>" rt
 
-                | Set rt -> 
-                    let inner = realTypeString m rt
+                | Set (Local name) -> 
                     match m with
                         | Immutable -> 
-                            return sprintf "pset<%s>" inner
+                            return sprintf "pset<%s>" name
 
                         | Mutable -> 
-                            let iInner = realTypeString Immutable rt
-                            return sprintf "MapSet<%s, %s>" iInner inner
+                            return sprintf "MapSet<%s, M%s>" name name
+
+                | Set (System name) -> 
+                    match m with
+                        | Immutable -> 
+                            return sprintf "pset<%s>" name
+
+                        | Mutable -> 
+                            return sprintf "ResetSet<%s>" name
 
         }
 
@@ -459,7 +465,7 @@ module Generator =
                                         | Local _ ->
                                             do! Generator.line "m%s = MapSet(l.%s, Differential.ToMod, Differential.Apply)" n n
                                         | _ ->
-                                            do! Generator.line "m%s = CSet.ofSeq l.%s" n n
+                                            do! Generator.line "m%s = ResetSet(l.%s)" n n
                                     
                             
                                     

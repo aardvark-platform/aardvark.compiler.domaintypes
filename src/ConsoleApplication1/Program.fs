@@ -4,10 +4,6 @@ open Aardvark.Base
 open Aardvark.Base.Incremental
 open Sepp
 
-
-type pset<'a> = PersistentHashSet<'a>
-module PSet = PersistentHashSet
-
 [<EntryPoint>]
 let main argv = 
     let o0 =
