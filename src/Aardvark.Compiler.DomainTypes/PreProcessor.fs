@@ -1,10 +1,9 @@
-﻿namespace FSharp.Compiler.Preprocessing
+﻿namespace Aardvark.Compiler.DomainTypes
 
 open System
 open System.IO
 open Microsoft.Build.Framework
 open Microsoft.Build.Utilities
-
 
 
 type RealType =

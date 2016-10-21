@@ -7,7 +7,7 @@ nuget Aardvark.Base.Incremental ~> 2.2.4
 nuget Aardvark.Base.Essentials ~> 2.2.4
 nuget FSharp.Compiler.Service ~> 6.0.2
 
-nuget FSharp.Compiler.PreProcessing ~> 0.0.2
+nuget Aardvark.Compiler.DomainTypes ~> 0.0.2
 
 group Build
 content: none

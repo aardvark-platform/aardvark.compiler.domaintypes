@@ -1,0 +1,14 @@
+type file
+id Aardvark.Compiler.DomainTypes
+authors VRVis Research Center
+description
+    Domain-Type Preprocessor for FSharp Projects
+files
+    ..\..\bin\Release\Aardvark.Compiler.DomainTypes.dll ==> build
+    ..\..\bin\Release\Aardvark.Compiler.DomainTypes.targets ==> build
+    ..\..\bin\Release\FSharp.Compiler.Service.dll ==> build
+dependencies
+	Aardvark.Base
+	Aardvark.Base.FSharp
+	Aardvark.Base.Incremental
+	Aardvark.Base.Essentials

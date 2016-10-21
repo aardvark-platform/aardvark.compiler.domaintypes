@@ -1,5 +1,5 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <UsingTask TaskName="FSharp.Compiler.Preprocessing.Preprocess" AssemblyFile="FSharp.Compiler.PreProcessing.dll" />
+  <UsingTask TaskName="Aardvark.Compiler.DomainTypes.Preprocess" AssemblyFile="Aardvark.Compiler.DomainTypes.dll" />
   <Target Name="UpdateGeneratedFiles" BeforeTargets="BeforeResolveReferences" Condition="'@(Compile)' != ''">
     <ItemGroup>
       <Current Include="@(Compile)" Condition="'%(Compile.DomainTypes)' == 'True'" />

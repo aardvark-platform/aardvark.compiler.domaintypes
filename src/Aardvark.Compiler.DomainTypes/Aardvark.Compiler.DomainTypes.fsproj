@@ -7,12 +7,12 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>378df51a-1c31-4af4-aced-9cfb5c1252e9</ProjectGuid>
     <OutputType>Library</OutputType>
-    <RootNamespace>FSharp.Compiler.PreProcessing</RootNamespace>
-    <AssemblyName>FSharp.Compiler.PreProcessing</AssemblyName>
+    <RootNamespace>Aardvark.Compiler.DomainTypes</RootNamespace>
+    <AssemblyName>Aardvark.Compiler.DomainTypes</AssemblyName>
     <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
     <TargetFSharpCoreVersion>4.4.0.0</TargetFSharpCoreVersion>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-    <Name>FSharp.Compiler.PreProcessing</Name>
+    <Name>Aardvark.Compiler.DomainTypes</Name>
     <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
@@ -62,7 +62,7 @@
   </Target>
   -->
   <ItemGroup>
-    <None Include="FSharp.Compiler.PreProcessing.targets">
+    <None Include="Aardvark.Compiler.DomainTypes.targets">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <Compile Include="PreProcessor.fs" />
