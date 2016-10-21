@@ -2,3 +2,7 @@
 obj
 /.vs/DependentFiles/v14/*.suo
 /src/.vs/DependentFiles/v14/*.suo
+/packages
+/paket-files
+/.paket/paket.exe
+/.fake
