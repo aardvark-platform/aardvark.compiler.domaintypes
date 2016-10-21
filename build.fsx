@@ -9,7 +9,7 @@ open Aardvark.Fake
 
 do Environment.CurrentDirectory <- __SOURCE_DIRECTORY__
 
-DefaultSetup.install ["src/DependentFiles.sln"]
+DefaultSetup.install ["src/Aardvark.Compiler.DomainTypes.sln"]
 
 
 entry()

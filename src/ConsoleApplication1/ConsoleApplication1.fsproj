@@ -59,8 +59,8 @@
   <ItemGroup>
     <Compile Include="MissingInBase.fs" />
     <Compile Include="Bla.fs">
-		<DomainTypes>True</DomainTypes>
-	</Compile>
+      <DomainTypes>True</DomainTypes>
+    </Compile>
     <Compile Include="Program.fs" />
     <Content Include="App.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -814,5 +814,5 @@
       </ItemGroup>
     </When>
   </Choose>
-  <Import Project="..\..\packages\FSharp.Compiler.PreProcessing\build\FSharp.Compiler.PreProcessing.targets" Condition="Exists('..\..\packages\FSharp.Compiler.PreProcessing\build\FSharp.Compiler.PreProcessing.targets')" Label="Paket" />
+  <Import Project="..\..\packages\Aardvark.Compiler.DomainTypes\build\Aardvark.Compiler.DomainTypes.targets" Condition="Exists('..\..\packages\Aardvark.Compiler.DomainTypes\build\Aardvark.Compiler.DomainTypes.targets')" Label="Paket" />
 </Project>
