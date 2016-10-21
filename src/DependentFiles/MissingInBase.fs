@@ -33,7 +33,15 @@ type MapSet<'k, 'v when 'k : equality and 'k :> IUnique>(initial : pset<'k>, cre
     let readers = HashSet<ASetReaders.EmitReader<'v>>()
     let content = VersionedSet (HashSet())
     let readers = WeakSet<ASetReaders.EmitReader<'v>>()
-    do if not (PSet.isEmpty initial) then failwith "sadsaljkjsamdlkasmd"
+    do for e in initial do
+        let id = Unique.id e
+        match store.TryGetValue id with
+            | (true, v) -> 
+                update(v, e)
+            | _ ->
+                let v = create e
+                store.Add(id, v)
+                content.Add v |> ignore
 
     let emit (deltas : Option<Change<'v>>) =
         lock readers (fun () ->

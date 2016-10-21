@@ -1,0 +1,19 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <UsingTask TaskName="FSharp.Compiler.Preprocessing.Preprocess" AssemblyFile="FSharp.Compiler.PreProcessing.dll" />
+  <Target Name="UpdateGeneratedFiles" BeforeTargets="BeforeResolveReferences" Condition="'@(Compile)' != ''">
+    <ItemGroup>
+      <Current Include="@(Compile)" Condition="'%(Compile.DomainTypes)' == 'True'" />
+      <OldItems Include="@(Compile)" />
+    </ItemGroup>
+    <Preprocess Item="%(OldItems.Identity)" Current="@(Current)">
+      <Output TaskParameter="Results" ItemName="Results" />
+    </Preprocess>
+    <ItemGroup>
+      <Compile Remove="@(OldItems)" />
+      <Compile Include="@(Results)" />
+      <OldItems Remove="@(OldItems)" />
+      <Current Remove="@(Current)" />
+    </ItemGroup>
+  </Target>
+</Project>
+  

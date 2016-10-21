@@ -1,16 +1,21 @@
 ﻿namespace Sepp
+
 open Aardvark.Base
 
 [<DomainType>]
 type Object =
     {
         trafo : Trafo3d
+        model : string
     }
 
 [<DomainType>]
 type State =
     {
-        a : int
-        b : float
+        viewTrafo : Trafo3d
         objects : pset<Object>
     }
+
+
+
+

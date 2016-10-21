@@ -1,0 +1,13 @@
+type file
+id FSharp.Compiler.PreProcessing
+authors VRVis Research Center
+description
+    FSharp Extensions for Aardvark.Base
+files
+    ..\..\bin\Release\FSharp.Compiler.PreProcessing.dll ==> target
+    ..\..\bin\Release\FSharp.Compiler.PreProcessing.targets ==> target
+dependencies
+	Aardvark.Base
+	Aardvark.Base.FSharp
+	Aardvark.Base.Incremental
+	Aardvark.Base.Essentials
