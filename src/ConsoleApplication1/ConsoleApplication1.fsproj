@@ -5,14 +5,15 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>3944bf10-2752-406c-8f00-95d82b7e4246</ProjectGuid>
+    <ProjectGuid>7a998bd3-a656-468a-ba92-3884c3bc8d1f</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <RootNamespace>DependentFiles</RootNamespace>
-    <AssemblyName>DependentFiles</AssemblyName>
-    <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
+    <RootNamespace>ConsoleApplication1</RootNamespace>
+    <AssemblyName>ConsoleApplication1</AssemblyName>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <TargetFSharpCoreVersion>4.4.0.0</TargetFSharpCoreVersion>
-    <Name>DependentFiles</Name>
+    <Name>ConsoleApplication1</Name>
+    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -55,14 +56,15 @@
     </Otherwise>
   </Choose>
   <Import Project="$(FSharpTargetsPath)" />
-  <Import Project="..\..\bin\Debug\FSharp.Compiler.Preprocessing.targets" />
   <ItemGroup>
     <Compile Include="MissingInBase.fs" />
     <Compile Include="Bla.fs">
-      <DomainTypes>True</DomainTypes>
-    </Compile>
+		<DomainTypes>True</DomainTypes>
+	</Compile>
     <Compile Include="Program.fs" />
-    <None Include="App.config" />
+    <Content Include="App.config">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <Reference Include="mscorlib" />
@@ -812,4 +814,5 @@
       </ItemGroup>
     </When>
   </Choose>
+  <Import Project="..\..\packages\FSharp.Compiler.PreProcessing\build\FSharp.Compiler.PreProcessing.targets" Condition="Exists('..\..\packages\FSharp.Compiler.PreProcessing\build\FSharp.Compiler.PreProcessing.targets')" Label="Paket" />
 </Project>

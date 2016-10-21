@@ -7,6 +7,8 @@ nuget Aardvark.Base.Incremental ~> 2.2.4
 nuget Aardvark.Base.Essentials ~> 2.2.4
 nuget FSharp.Compiler.Service ~> 6.0.2
 
+nuget FSharp.Compiler.PreProcessing ~> 0.0.2
+
 group Build
 content: none
 source https://vrvis.myget.org/F/aardvark_public/api/v3/index.json

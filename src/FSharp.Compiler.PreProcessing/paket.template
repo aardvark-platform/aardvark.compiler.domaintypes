@@ -4,8 +4,8 @@ authors VRVis Research Center
 description
     FSharp Extensions for Aardvark.Base
 files
-    ..\..\bin\Release\FSharp.Compiler.PreProcessing.dll ==> target
-    ..\..\bin\Release\FSharp.Compiler.PreProcessing.targets ==> target
+    ..\..\bin\Release\FSharp.Compiler.PreProcessing.dll ==> build
+    ..\..\bin\Release\FSharp.Compiler.PreProcessing.targets ==> build
 dependencies
 	Aardvark.Base
 	Aardvark.Base.FSharp
