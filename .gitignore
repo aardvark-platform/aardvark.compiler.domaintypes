@@ -7,3 +7,4 @@ obj
 /.paket/paket.exe
 /.fake
 /src/.vs/Aardvark.Compiler.DomainTypes/v14/*.suo
+*.g.fs
