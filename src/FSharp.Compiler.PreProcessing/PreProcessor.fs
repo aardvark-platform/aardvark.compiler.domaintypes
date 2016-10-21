@@ -333,7 +333,7 @@ module Generator =
                     let inner = realTypeString m rt
                     match m with
                         | Immutable -> 
-                            return sprintf "prefset<%s>" inner
+                            return sprintf "pset<%s>" inner
 
                         | Mutable -> 
                             let iInner = realTypeString Immutable rt
@@ -543,7 +543,11 @@ module Generator =
             generator {
                 for (ns, defs) in defs do
                     do! Generator.line "namespace %s" ns
+                    do! Generator.line "[<AutoOpen>]"
+                    do! Generator.line "module Generated ="
+                    do! Generator.push
                     do! Generator.line ""
+                    do! Generator.line "open %s" ns
                     do! Generator.line "open Aardvark.Base.Incremental"
                     do! Generator.line ""
 
@@ -554,6 +558,7 @@ module Generator =
                     do! generateTypes defs
 
                     do! generateDiffs defs
+                    do! Generator.pop
 
             }
         Generator.run Immutable gen 
