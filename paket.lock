@@ -1,6 +1,6 @@
 NUGET
   remote: http://api.nuget.org/v3/index.json
-    FSharp.Compiler.Service (8.0)
+    FSharp.Compiler.Service (6.0.2)
       System.Collections.Immutable (>= 1.2)
       System.Reflection.Metadata (>= 1.4.1-beta-24227-04)
     Microsoft.NETCore.Platforms (1.0.1) - framework: >= netstandard10

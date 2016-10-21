@@ -1,3 +1,3 @@
-﻿module Test
+﻿namespace Aardvark.Base
 
-type BaseType() = class end
+type DomainTypeAttribute() = inherit System.Attribute()
