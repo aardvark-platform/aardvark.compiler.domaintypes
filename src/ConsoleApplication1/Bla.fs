@@ -1,6 +1,7 @@
 ﻿namespace Sepp
 
 open Aardvark.Base
+open Aardvark.Base.Incremental
 
 [<DomainType>]
 type Object =
@@ -14,6 +15,7 @@ type State =
     {
         viewTrafo : Trafo3d
         objects : pset<Object>
+        stuff : pset<int>
     }
 
 

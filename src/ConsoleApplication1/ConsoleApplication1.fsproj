@@ -57,7 +57,6 @@
   </Choose>
   <Import Project="$(FSharpTargetsPath)" />
   <ItemGroup>
-    <Compile Include="MissingInBase.fs" />
     <Compile Include="Bla.fs">
       <DomainTypes>True</DomainTypes>
     </Compile>
