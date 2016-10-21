@@ -55,22 +55,26 @@
     </Otherwise>
   </Choose>
   <Import Project="$(FSharpTargetsPath)" />
+  <UsingTask TaskName="FSharp.Compiler.Preprocessing.Preprocess" AssemblyFile="..\..\bin\Debug\FSharp.Compiler.PreProcessing.dll"/>
+  <!--
   <UsingTask TaskName="ProcessItem" TaskFactory="CodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.v4.0.dll">
     <ParameterGroup>
-      <Item Required="true" />
-      <Current Required="true" />
+      <Item ParameterType="System.String" Required="true" />
+      <Current ParameterType="System.String" Required="true" />
       <Results ParameterType="System.String[]" Output="true" />
     </ParameterGroup>
     <Task>
+	  <Reference Include="E:\Development\DependentFiles\bin\Debug\FSharp.Compiler.PreProcessing.dll" />
       <Using Namespace="System.IO" />
       <Using Namespace="System.Collections.Generic" />
+      <Using Namespace="FSharp.Compiler.Preprocessing" />
       <Code Type="Fragment" Language="cs">
 	    var fileName = Path.GetFileNameWithoutExtension(Item);
 	    var all = new System.Collections.Generic.HashSet&lt;string&gt;(Current.Split(';'));
 	    if (all.Contains(Item))
 		{
 		    var domFile = fileName + ".domain.fs";
-			File.WriteAllText(domFile, "namespace Blubber\r\ntype Sepp() = inherit Test.BaseType()");
+			Preprocessing.Run(Item, domFile);
 			Results = new[]{Item, domFile };
 		}
 		else
@@ -80,14 +84,15 @@
       </Code>
     </Task>
   </UsingTask>
+  -->
   <Target Name="UpdateGeneratedFiles" BeforeTargets="BeforeResolveReferences" Condition="'@(Compile)' != ''">
     <ItemGroup>
       <Current Include="@(Compile)" Condition="'%(Compile.DomainTypes)' == 'True'" />
       <OldItems Include="@(Compile)" />
     </ItemGroup>
-    <ProcessItem Item="%(OldItems.Identity)" Current="@(Current)">
+    <Preprocess Item="%(OldItems.Identity)" Current="@(Current)">
       <Output TaskParameter="Results" ItemName="Results" />
-    </ProcessItem>
+    </Preprocess>
     <ItemGroup>
       <Compile Remove="@(OldItems)" />
       <Compile Include="@(Results)" />

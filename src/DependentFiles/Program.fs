@@ -4,6 +4,6 @@
 
 [<EntryPoint>]
 let main argv = 
-    let mySepp = Blubber.Sepp()
-    printfn "%A" argv
+    let mySepp = Blubber.Seppy()
+    printfn "%A" mySepp.A
     0 // return an integer exit code
