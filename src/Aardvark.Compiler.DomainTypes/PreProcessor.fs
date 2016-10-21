@@ -513,7 +513,7 @@ module Generator =
                                         | Local _ ->
                                             do! Generator.line "r.m%s.Update(l.%s)" n n
                                         | _ ->
-                                            do! Generator.line "CSet.change r.m%s l.%s" n n 
+                                            do! Generator.line "r.m%s.Update(l.%s)" n n 
                     
                             ()
 
