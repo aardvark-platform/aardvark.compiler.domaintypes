@@ -2,7 +2,7 @@
 // See the 'F# Tutorial' project for more help.
 open Aardvark.Base
 open Aardvark.Base.Incremental
-open Sepp
+open DomainModel
 
 [<EntryPoint>]
 let main argv = 
@@ -10,14 +10,14 @@ let main argv =
         { 
             _id = 0L
             trafo = Trafo3d.Scale 10.0
-            model = "object 0"
+            model = { fileName = "obj0.obj"; bounds = Box3d.Unit }
         }
 
     let o1 = 
         {
             _id = 0L
             trafo = Trafo3d.Translation(1.0, 0.0, 0.0)
-            model = "object 1"
+            model = { fileName = "obj1.obj"; bounds = Box3d.Unit }
         }
     
     let state =
@@ -25,20 +25,12 @@ let main argv =
             _id = 0L
             viewTrafo = Trafo3d.Identity
             objects = PSet.ofList [o0]
-            stuff = PSet.ofList [1;2;3]
         }
 
 
 
     let ms = state.ToMod()
  
-    ms.mstuff |> ASet.unsafeRegisterCallbackKeepDisposable (fun o -> 
-        o |> List.iter (fun o ->
-            match o with
-                | Add v -> printfn "Add %A" v
-                | Rem v -> printfn "Rem %A" v
-        )
-    ) |> ignore
     
     ms.mobjects |> ASet.unsafeRegisterCallbackKeepDisposable (fun o -> 
         o |> List.iter (fun o ->
