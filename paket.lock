@@ -16,7 +16,7 @@ NUGET
       System.Reactive.Core (>= 3.0 < 3.1)
       System.Reactive.Interfaces (>= 3.0 < 3.1)
       System.Reactive.Linq (>= 3.0 < 3.1)
-    Aardvark.Compiler.DomainTypes (0.0.1)
+    Aardvark.Compiler.DomainTypes (0.0.2)
       Aardvark.Base
       Aardvark.Base.Essentials
       Aardvark.Base.FSharp
