@@ -13,6 +13,7 @@
       <Compile Include="@(Results)" />
       <OldItems Remove="@(OldItems)" />
       <Current Remove="@(Current)" />
+      <Results Remove="@(Results)" />
     </ItemGroup>
   </Target>
 </Project>

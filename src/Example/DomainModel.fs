@@ -3,7 +3,6 @@
 open Aardvark.Base
 open Aardvark.Base.Incremental
 
-
 type Model =
     {
         fileName    : string
@@ -13,6 +12,7 @@ type Model =
 [<DomainType>]
 type Object =
     {
+        name        : string
         trafo       : Trafo3d
         model       : Model
     }
@@ -20,11 +20,10 @@ type Object =
 [<DomainType>]
 type State =
     {
+        primary     : Object
         viewTrafo   : Trafo3d
         objects     : pset<Object>
         test        : array<Object>
     }
-
-
 
 

@@ -573,6 +573,7 @@ module private Preprocessing =
     open System.Collections.Generic
     open Microsoft.FSharp.Compiler.Ast
     open Microsoft.FSharp.Compiler.SourceCodeServices
+    open Microsoft.FSharp.Compiler.Range
     let checker = FSharpChecker.Create()
 
 
@@ -758,45 +759,598 @@ module private Preprocessing =
     
     open System.Runtime.CompilerServices
 
+    type SynComponentInfo with
+        member x.Name =
+            match x with
+                | SynComponentInfo.ComponentInfo(_,_,_,id,_,_,_,_) ->
+                    idString id
+
+        member x.Attributes =
+            match x with
+                | SynComponentInfo.ComponentInfo(att,_,_,_,_,_,_,_) -> att
+
+    type SynTypeDefn with
+        member x.Name =
+            match x with
+                | SynTypeDefn.TypeDefn(ci,_,_,_) -> ci.Name
+
+        member x.IsDomainType =
+            match x with
+                | SynTypeDefn.TypeDefn(ci,_,_,_) -> 
+                    ci.Attributes |> List.exists (fun a -> 
+                        let n = lastString a.TypeName
+                        n = "DomainType" || n = "DomainTypeAttribute"
+                    )
+      
+    type SynType with
+        member x.NameOption =
+            match x with
+                | SynType.LongIdent(LongIdentWithDots(id,_)) -> idString id |> Some
+                | SynType.HashConstraint(t,_) -> t.NameOption
+                | SynType.LongIdentApp(n, _, _, args, _, _, _) -> n.NameOption
+                | SynType.WithGlobalConstraints(t,_,_) -> t.NameOption
+                | _ -> None              
+
+
+    let (|PSet|MapSet|ResetSet|ModRef|Other|) (t : SynType) =
+        match t with
+            | SynType.App(n, _, args, _, _, _, _) ->
+                match n.NameOption, args with
+                    | Some "pset", [a] -> PSet a
+                    | Some "MapSet", [a;b] -> MapSet(a,b)
+                    | Some "ResetSet", [a] -> ResetSet(a)
+                    | Some "ModRef", [a] -> ModRef(a)
+                    | _ -> Other
+            | _ ->
+                Other
+        
+    type SynExpr with
+        static member Seq (l : list<SynExpr>) =
+            let rec build (l : list<SynExpr>) =
+                match l with
+                    | [] -> SynExpr.Const(SynConst.Unit, range0)
+                    | [e] -> e
+                    | h :: rest ->
+                        SynExpr.Sequential(SequencePointInfoForSeq.SequencePointsAtSeq, true, h, build rest, range0)
+
+            build l
+
     [<AbstractClass; Sealed; Extension>]
     type Substitution private() =
 
         [<Extension>]
-        static member SubstituteTypeDef (ast : list<SynModuleDecl>, f : SynTypeDefn -> list<SynTypeDefn>) : list<SynModuleDecl> =
-            let rec substituteSingle (m : SynModuleDecl) =
+        static member SubstituteTypeDef (ast : list<SynModuleDecl>, ns : string, f : string -> list<SynTypeDefn> -> list<SynTypeDefn>) : list<SynModuleDecl> =
+            let rec substituteSingle (ns : string) (m : SynModuleDecl) =
                 match m with
                     | SynModuleDecl.NestedModule(a,b,decls,d,e) ->
-                        SynModuleDecl.NestedModule(a, b, substitute decls, d, e)
+                        let name = a.Name
+                        SynModuleDecl.NestedModule(a, b, substitute (sprintf "%s.%s" ns name) decls, d, e)
 
                     | SynModuleDecl.Types(defs, range) ->
-                        SynModuleDecl.Types(defs |> List.collect f, range)
+                        SynModuleDecl.Types(f ns defs, range)
 
                     | _ ->
                         m
 
-            and substitute (m : list<SynModuleDecl>) =
+            and substitute (ns : string) (m : list<SynModuleDecl>) =
                 match m with
                     | [] -> []
                     | m :: rest ->
-                        let newHead = substituteSingle m
-                        newHead :: substitute rest
+                        let newHead = substituteSingle ns m
+                        newHead :: substitute ns rest
 
-            substitute ast
+            substitute ns ast
 
         [<Extension>]
-        static member SubstituteTypeDef (ast : SynModuleOrNamespace, f : SynTypeDefn -> list<SynTypeDefn>) : SynModuleOrNamespace =
+        static member SubstituteTypeDef (ast : SynModuleOrNamespace, f : string -> list<SynTypeDefn> -> list<SynTypeDefn>) : SynModuleOrNamespace =
             let (SynModuleOrNamespace(id,a,b,decls,c,d,e,ff)) = ast
-            SynModuleOrNamespace(id, a, b, Substitution.SubstituteTypeDef(decls, f), c, d, e, ff)
+            let name = idString id
+
+            let newDecl = 
+                let newDecls = Substitution.SubstituteTypeDef(decls,name, f)
+                let att =
+                    { 
+                        SynAttribute.TypeName = LongIdentWithDots([Ident("AutoOpen", range0)], [])
+                        SynAttribute.ArgExpr = SynExpr.Const(SynConst.Unit, range0)
+                        SynAttribute.Target = None
+                        SynAttribute.AppliesToGetterAndSetter = false
+                        SynAttribute.Range = range0
+                    }
+
+                SynModuleDecl.NestedModule(SynComponentInfo.ComponentInfo([att], [], [], [Ident("Generated", range0)], PreXmlDocEmpty, false, None, range0), false, newDecls, false, range0)
+
+            SynModuleOrNamespace(id, a, b, [newDecl], c, d, e, ff)
 
         [<Extension>]
-        static member SubstituteTypeDef (ast : ParsedInput, f : SynTypeDefn -> list<SynTypeDefn>) =
+        static member SubstituteTypeDef (ast : ParsedInput, f : string -> list<SynTypeDefn> -> list<SynTypeDefn>) =
             match ast with
                 | ParsedInput.ImplFile(ParsedImplFileInput(fileName, isScript, qualName, scopedPragma, parsedHashDirectives, modulesAndNamespaces, dunno)) ->
                     ParsedInput.ImplFile(ParsedImplFileInput(fileName, isScript, qualName, scopedPragma, parsedHashDirectives, modulesAndNamespaces |> List.map (fun m -> Substitution.SubstituteTypeDef(m,f)), dunno))
                 | ast ->
                     ast
-        
+ 
+        [<Extension>]       
+        static member GetAllDomainTypes (m : list<SynModuleDecl>, ns : string) =
+            match m with
+                | [] -> Set.empty
+                | h :: rest ->
+                    match h with
+                        | SynModuleDecl.Types(types,_) ->
+                            let all =
+                                types |> List.choose (fun (SynTypeDefn.TypeDefn(SynComponentInfo.ComponentInfo(att,_,_,id,_,_,_,_),repr,c,d)) ->
+                                    let name = idString id
+                                    let isDomainType =
+                                        att |> List.exists (fun a -> 
+                                            let n = lastString a.TypeName
+                                            n = "DomainType" || n = "DomainTypeAttribute"
+                                        )
 
+                                    if isDomainType then
+                                        match repr with
+                                            | SynTypeDefnRepr.Simple(SynTypeDefnSimpleRepr.Record(_,fields,_), _) -> Some (ns, name)
+                                            | _ -> None
+                                    else
+                                        None
+                                )                            
+
+                            let s = Set.ofList all
+                            Set.union s (Substitution.GetAllDomainTypes(rest, ns))
+
+                        | SynModuleDecl.NestedModule(SynComponentInfo.ComponentInfo(att,_,_,id,_,_,_,_), _, decls, _, _) ->
+                            let name = idString id
+                            let inner = Substitution.GetAllDomainTypes(decls, sprintf "%s.%s" ns name)
+
+                            Set.union inner (Substitution.GetAllDomainTypes(rest, ns))
+
+                        | _ ->
+                            Substitution.GetAllDomainTypes(rest, ns)
+
+        [<Extension>]
+        static member GetAllDomainTypes (m : SynModuleOrNamespace) =
+            let (SynModuleOrNamespace(id,a,b,decls,c,d,e,ff)) = m
+            Substitution.GetAllDomainTypes(decls, idString id)
+   
+        [<Extension>] 
+        static member GetAllDomainTypes (ast : ParsedInput) =
+            match ast with
+                | ParsedInput.ImplFile(ParsedImplFileInput(fileName, isScript, qualName, scopedPragma, parsedHashDirectives, modulesAndNamespaces, dunno)) ->
+                    modulesAndNamespaces |> List.map (fun m -> Substitution.GetAllDomainTypes(m)) |> Set.unionMany
+                | ast ->
+                    Set.empty
+
+    let rec replaceLast (f : string -> string) (id : list<Ident>) =
+        match id with
+            | [] -> []
+            | [v] -> [Ident(f v.idText, v.idRange)]
+            | h :: rest -> h :: replaceLast f rest
+
+    
+    let rec typeName (t : SynType) =
+        match t with
+            | SynType.LongIdent(LongIdentWithDots(id,_)) -> idString id |> Some
+            | SynType.HashConstraint(t,_) -> typeName t
+            | SynType.LongIdentApp(n, _, _, args, _, _, _) -> typeName n
+            | SynType.WithGlobalConstraints(t,_,_) -> typeName t
+            | _ -> None
+
+
+    let tModRef = SynType.LongIdent(LongIdentWithDots([Ident("ModRef", range0)], []))
+    let tMapSet = SynType.LongIdent(LongIdentWithDots([Ident("MapSet", range0)], []))
+    let tResetSet = SynType.LongIdent(LongIdentWithDots([Ident("ResetSet", range0)], []))
+    let tReuseCache = SynType.LongIdent(LongIdentWithDots([Ident("ReuseCache", range0)], []))
+    let tId = SynType.LongIdent(LongIdentWithDots([Ident("Id", range0)], []))
+    let tIUnique = SynType.LongIdent(LongIdentWithDots([Ident("IUnique", range0)], []))
+
+
+    let rec toModTypeRef (domainTypes : Set<string>) (t : SynType) : SynType =
+        match t with
+            | SynType.LongIdent(LongIdentWithDots(id,r)) ->
+                let n = idString id
+
+                if Set.contains n domainTypes then
+                    let newId = replaceLast (sprintf "M%s") id
+                    SynType.LongIdent(LongIdentWithDots(newId, r))
+                else
+                    SynType.App(tModRef, None, [t], [], None, false, range0)
+
+            | SynType.App(n, a, [imm], b, c, d, e) ->
+                match typeName n with
+                    | Some "pset" ->
+                        match typeName imm with
+                            | Some n when Set.contains n domainTypes ->
+                                let mut = toModTypeRef domainTypes imm
+                                SynType.App(tMapSet, a, [imm; mut], b, c, d, e)
+                            | _ ->
+                                SynType.App(tResetSet, a, [imm], b, c, d, e)
+                    | _ ->
+                        SynType.App(tModRef, None, [t], [], None, false, range0)
+
+            | t ->
+                SynType.App(tModRef, None, [t], [], None, false, range0)
+                
+                        
+
+    let toModField (domainTypes : Set<string>) (f : SynField) : SynField =
+        let (SynField.Field(attributes, isStatic, id, typeName, a, xmlDoc, accessibility, range)) = f
+
+        match id with
+            | Some id ->
+                let newId = Ident("m" + id.idText, id.idRange)
+                SynField.Field(attributes, isStatic, Some newId, toModTypeRef domainTypes typeName, a, xmlDoc, accessibility, range)
+            | _ ->
+                failwith ""
+
+    let change (mExpr : SynExpr) (iExpr : SynExpr) (cache : SynExpr) (SynField.Field(id = mId; typeName = mType)) (SynField.Field(id = iId; typeName = iType)) =
+        let mId = mId.Value
+        let iId = iId.Value
+        let mField = SynExpr.DotGet(mExpr, range0, LongIdentWithDots([mId], []), range0)
+        let iField = SynExpr.DotGet(iExpr, range0, LongIdentWithDots([iId], []), range0)
+
+
+        match mType with
+            | MapSet(_) | ResetSet(_) -> 
+                let arg = SynExpr.Tuple([iField], [], range0)
+                SynExpr.App(ExprAtomicFlag.NonAtomic, false, SynExpr.DotGet(mField, range0, LongIdentWithDots([Ident("Update", range0)], []), range0), SynExpr.Paren(arg, range0, None, range0), range0)
+
+            | ModRef(a) ->
+                SynExpr.DotSet(mField, LongIdentWithDots([Ident("Value", range0)], []), iField, range0)
+
+            | _ ->
+                let arg = SynExpr.Tuple([iField], [], range0)
+                SynExpr.App(ExprAtomicFlag.NonAtomic, false, SynExpr.DotGet(mField, range0, LongIdentWithDots([Ident("Apply", range0)], []), range0), SynExpr.Paren(SynExpr.Tuple([arg; cache], [range0], range0), range0, None, range0), range0)
+
+         
+    let init (iExpr : SynExpr) (cache : SynExpr) (SynField.Field(id = mId; typeName = mType)) (SynField.Field(id = iId; typeName = iType) as mf) =
+        let mId = mId.Value
+        let iId = iId.Value
+        let iField = SynExpr.DotGet(iExpr, range0, LongIdentWithDots([iId], []), range0)
+
+        let expression = 
+            match mType with
+                | MapSet(ivType, mvType) ->
+                    // cache.GetCache()
+                    let typedCache = SynExpr.App(ExprAtomicFlag.NonAtomic, false, SynExpr.DotGet(cache, range0, LongIdentWithDots([Ident("GetCache", range0)], []), range0), SynExpr.Const(SynConst.Unit, range0), range0)
+    
+                    let args = 
+                        let m = SynExpr.Ident(Ident("m", range0))
+                        let a = SynExpr.Ident(Ident("a", range0))
+                        let create =
+                            // fun (a : iType) -> a.ToMod(cache)
+                            let body = SynExpr.App(ExprAtomicFlag.NonAtomic, false, SynExpr.DotGet(a, range0, LongIdentWithDots([Ident("ToMod", range0)], []), range0), SynExpr.Paren(cache, range0, None, range0), range0)
+                            let a = SynSimplePat.Typed(SynSimplePat.Id(Ident("a", range0), None, false, false, false, range0), ivType, range0)
+                            SynExpr.Lambda(false, false, SynSimplePats.SimplePats([a], range0), body, range0)
+
+                        let update =
+                            // fun (m : mType, a : iType) -> m.Apply(a, cache)
+                            let body = SynExpr.App(ExprAtomicFlag.NonAtomic, false, SynExpr.DotGet(m, range0, LongIdentWithDots([Ident("Apply", range0)], []), range0), SynExpr.Paren(SynExpr.Tuple([a; cache], [range0], range0), range0, None, range0), range0)
+                            let a = SynSimplePat.Typed(SynSimplePat.Id(Ident("a", range0), None, false, false, false, range0), ivType, range0)
+                            let m = SynSimplePat.Typed(SynSimplePat.Id(Ident("m", range0), None, false, false, false, range0), mvType, range0)
+                       
+                            SynExpr.Lambda(false, false, SynSimplePats.SimplePats([m;a], range0), body, range0)
+
+
+                        SynExpr.Tuple(
+                            [
+                                SynExpr.Paren(typedCache, range0, None, range0)
+                                iField
+                                SynExpr.Paren(create, range0, None, range0)
+                                SynExpr.Paren(update, range0, None, range0)
+
+                            ],
+                            [ range0; range0 ],
+                            range0
+                        )
+
+                    SynExpr.App(ExprAtomicFlag.NonAtomic, false, SynExpr.Ident(Ident("MapSet", range0)), SynExpr.Paren(args, range0, None, range0), range0)
+            
+                | ResetSet(_) -> 
+                    let args = iField
+                    SynExpr.App(ExprAtomicFlag.NonAtomic, false, SynExpr.Ident(Ident("ResetSet", range0)), SynExpr.Paren(args, range0, None, range0), range0)
+
+                | ModRef(a) ->
+                    let args = iField
+                    SynExpr.App(ExprAtomicFlag.NonAtomic, false, SynExpr.LongIdent(false, LongIdentWithDots([Ident("Mod", range0); Ident("init", range0)], [range0]), None, range0), SynExpr.Paren(args, range0, None, range0), range0)
+
+                | _ ->
+                    let arg = SynExpr.Tuple([iField], [], range0)
+                    SynExpr.App(ExprAtomicFlag.NonAtomic, false, SynExpr.DotGet(iField, range0, LongIdentWithDots([Ident("ToMod", range0)], []), range0), SynExpr.Paren(cache, range0, None, range0), range0)
+
+        LongIdentWithDots([mId], []), expression
+
+    let toModType (domainTypes : Set<string>) (t : SynTypeDefn) =
+        let (SynTypeDefn.TypeDefn(oldCi,repr,mems,tdRange)) = t
+        let (SynComponentInfo.ComponentInfo(att,typeParams,constraints,id,xmlDoc,preferPostfix,accessibility,range)) = oldCi
+        let newId = id |> replaceLast (sprintf "M%s")
+        let tName = SynType.LongIdent(LongIdentWithDots(id, []))
+        let tmName = SynType.LongIdent(LongIdentWithDots(newId, []))
+
+        let ci =
+            SynComponentInfo.ComponentInfo(
+                att,
+                typeParams, constraints,
+                newId,
+                xmlDoc,
+                preferPostfix,
+                accessibility,
+                range
+            )
+
+        match repr with
+            | SynTypeDefnRepr.Simple(simple,_) ->
+                match simple with
+                    | SynTypeDefnSimpleRepr.Record(access, fields, range) -> 
+                        let newFields = fields |> List.map (toModField domainTypes)
+                        let originalField = SynField.Field([], false, Some (Ident("_original", range0)), tName, true, PreXmlDocEmpty, None, range0)
+                        let idField = SynField.Field([], false, Some (Ident("_id", range0)), tId, true, PreXmlDocEmpty, None, range0)
+                        let self = SynExpr.Ident(Ident("x", range0))
+                        let reuseCache = SynExpr.Ident(Ident("reuseCache", range0))
+                        let originalId = LongIdentWithDots([Ident("_original", range0)], [])
+
+                            
+                        let apply = 
+                            let arg0 = SynExpr.Ident(Ident("arg0", range0))
+                            let changes = List.map2 (change self arg0 reuseCache) newFields fields |> SynExpr.Seq
+                            let equalId = LongIdentWithDots([Ident("System", range0); Ident("Object", range0); Ident("ReferenceEquals", range0)], [range0; range0])
+                            let org = SynExpr.DotGet(self, range0, originalId, range0)
+
+                            let guard = 
+                                let args = SynExpr.Paren(SynExpr.Tuple([arg0; org], [range0], range0), range0, None, range0)
+                                let neg = SynExpr.App(ExprAtomicFlag.NonAtomic, false, SynExpr.LongIdent(false, equalId, None, range0), args, range0)
+                                SynExpr.App(ExprAtomicFlag.NonAtomic, false, SynExpr.Ident(Ident("not", range0)), SynExpr.Paren(neg, range0, None, range0), range0)
+
+                            let guardedChanges = 
+                                SynExpr.IfThenElse(
+                                    guard,
+                                    SynExpr.Seq [
+                                        SynExpr.DotSet(self, originalId, arg0, range0)
+                                        changes
+                                    ],
+                                    None,
+                                    SequencePointInfoForBinding.NoSequencePointAtDoBinding,
+                                    false, 
+                                    range0,
+                                    range0
+                                )
+
+                            let svData =
+                                let flags =
+                                    {
+                                        IsInstance = true
+                                        IsDispatchSlot = false
+                                        IsFinal = false
+                                        IsOverrideOrExplicitImpl = false
+                                        MemberKind = MemberKind.Member
+                                    }
+
+                                SynValData(
+                                    Some flags, 
+                                    SynValInfo(
+                                        [
+                                            [SynArgInfo.SynArgInfo([], false, Some (Ident("x", range0)))]
+                                            [SynArgInfo.SynArgInfo([], false, Some (Ident("arg0", range0))); SynArgInfo.SynArgInfo([], false, Some (Ident("reuseCache", range0)))]
+                                        ], 
+                                        SynArgInfo([], false, None)), 
+                                        Some (Ident("Apply", range0)
+                                    )
+                                )
+
+                            let headPat =
+                                let args =
+                                    SynConstructorArgs.Pats [
+                                        SynPat.Paren(
+                                            SynPat.Tuple(
+                                                [
+                                                    SynPat.Typed(
+                                                        SynPat.Named(SynPat.Wild range0, (Ident("arg0", range0)), false, None, range0), 
+                                                        tName,
+                                                        range0
+                                                    )
+                                                    SynPat.Typed(
+                                                        SynPat.Named(SynPat.Wild range0, (Ident("reuseCache", range0)), false, None, range0), 
+                                                        tReuseCache,
+                                                        range0
+                                                    )
+                                                ], 
+                                                range0
+                                            ),
+                                            range0
+                                        )
+                                    ]
+                                let id = LongIdentWithDots([Ident("x", range0); Ident("Apply", range0)], [range0])
+                                SynPat.LongIdent(id, None, None, args, None, range0)
+
+                            let binding =
+                                SynBinding.Binding(
+                                    None, 
+                                    SynBindingKind.NormalBinding, 
+                                    false, false, 
+                                    [], PreXmlDocEmpty, 
+                                    svData, 
+                                    headPat, 
+                                    None, 
+                                    guardedChanges, 
+                                    range0, SequencePointInfoForBinding.NoSequencePointAtLetBinding
+                                )
+
+                            SynMemberDefn.Member(binding, range0)
+
+                        let toMod =
+                            let svData =
+                                let flags =
+                                    {
+                                        IsInstance = true
+                                        IsDispatchSlot = false
+                                        IsFinal = false
+                                        IsOverrideOrExplicitImpl = false
+                                        MemberKind = MemberKind.Member
+                                    }
+
+                                SynValData(
+                                    Some flags, 
+                                    SynValInfo(
+                                        [
+                                            [SynArgInfo.SynArgInfo([], false, Some (Ident("x", range0)))]
+                                            [SynArgInfo.SynArgInfo([], false, Some (Ident("reuseCache", range0)))]
+                                        ], 
+                                        SynArgInfo([], false, None)
+                                    ), 
+                                    Some (Ident("ToMod", range0))
+                                )
+
+                            let headPat =
+                                let args =
+                                    SynConstructorArgs.Pats [
+                                        SynPat.Paren(
+                                            SynPat.Typed(
+                                                SynPat.Named(SynPat.Wild range0, (Ident("reuseCache", range0)), false, None, range0), 
+                                                tReuseCache,
+                                                range0
+                                            ),
+                                            range0
+                                        )
+                                    ]
+                                let id = LongIdentWithDots([Ident("x", range0); Ident("ToMod", range0)], [range0])
+                                SynPat.LongIdent(id, None, None, args, None, range0)
+
+
+                            let inits = 
+                                let real = List.map2 (init self reuseCache) newFields fields
+                                (originalId, self) :: real
+                            let init =
+                                let args = 
+                                    inits |> List.map (fun (f,v) ->
+                                        let name = (f, true)
+                                        (name, Some v, Some (range0, None))
+                                    )
+                                SynExpr.Record(None, None, args, range0)
+
+                            let binding =
+                                SynBinding.Binding(
+                                    None, 
+                                    SynBindingKind.NormalBinding, 
+                                    false, false, 
+                                    [], PreXmlDocEmpty, 
+                                    svData, 
+                                    headPat, 
+                                    Some (SynBindingReturnInfo.SynBindingReturnInfo(tmName, range0, [])), 
+                                    init, 
+                                    range0, 
+                                    SequencePointInfoForBinding.NoSequencePointAtLetBinding
+                                )
+                                
+                            SynMemberDefn.Member(binding, range0)
+
+                        let iUniqueImpl =
+                            let getter = 
+                                let svData =
+                                    let flags =
+                                        {
+                                            IsInstance = true
+                                            IsDispatchSlot = false
+                                            IsFinal = false
+                                            IsOverrideOrExplicitImpl = false
+                                            MemberKind = MemberKind.PropertyGet
+                                        }
+
+                                    SynValData(
+                                        Some flags, 
+                                        SynValInfo(
+                                            [
+                                                [SynArgInfo.SynArgInfo([], false, Some (Ident("x", range0)))]
+                                                [SynArgInfo.SynArgInfo([], false, None)]
+                                            ], 
+                                            SynArgInfo([], false, None)
+                                        ), 
+                                        Some (Ident("Id", range0))
+                                    )
+
+                                let headPat =
+                                    let args = SynConstructorArgs.Pats [SynPat.Const(SynConst.Unit, range0)]
+                                    let id = LongIdentWithDots([Ident("x", range0); Ident("Id", range0)], [range0])
+                                    SynPat.LongIdent(id, None, None, args, None, range0)
+
+                                let expr = SynExpr.DotGet(self, range0, LongIdentWithDots([Ident("_id", range0)], []), range0)
+
+                                let binding =
+                                    SynBinding.Binding(
+                                        None, 
+                                        SynBindingKind.NormalBinding, 
+                                        false, false, 
+                                        [], PreXmlDocEmpty, 
+                                        svData, 
+                                        headPat, 
+                                        None, 
+                                        expr, 
+                                        range0, 
+                                        SequencePointInfoForBinding.NoSequencePointAtLetBinding
+                                    )
+
+                                SynMemberDefn.Member(binding, range0)
+
+                            let setter = 
+                                let svData =
+                                    let flags =
+                                        {
+                                            IsInstance = true
+                                            IsDispatchSlot = false
+                                            IsFinal = false
+                                            IsOverrideOrExplicitImpl = false
+                                            MemberKind = MemberKind.PropertySet
+                                        }
+
+                                    SynValData(
+                                        Some flags, 
+                                        SynValInfo(
+                                            [
+                                                [SynArgInfo.SynArgInfo([], false, Some (Ident("x", range0)))]
+                                                [SynArgInfo.SynArgInfo([], false, Some (Ident("id", range0)))]
+                                            ], 
+                                            SynArgInfo([], false, None)
+                                        ), 
+                                        Some (Ident("Id", range0))
+                                    )
+
+                                let headPat =
+                                    let args = SynConstructorArgs.Pats [SynPat.Named(SynPat.Wild range0, (Ident("v", range0)), false, None, range0)]
+                                    let id = LongIdentWithDots([Ident("x", range0); Ident("Id", range0)], [range0])
+                                    SynPat.LongIdent(id, None, None, args, None, range0)
+
+                                let expr = SynExpr.DotSet(self, LongIdentWithDots([Ident("_id", range0)], []), SynExpr.Ident(Ident("v", range0)), range0)
+
+                                let binding =
+                                    SynBinding.Binding(
+                                        None, 
+                                        SynBindingKind.NormalBinding, 
+                                        false, false, 
+                                        [], PreXmlDocEmpty, 
+                                        svData, 
+                                        headPat, 
+                                        None, 
+                                        expr, 
+                                        range0, 
+                                        SequencePointInfoForBinding.NoSequencePointAtLetBinding
+                                    )
+
+                                SynMemberDefn.Member(binding, range0)
+                            
+                            SynMemberDefn.Interface(
+                                tIUnique, 
+                                Some [getter; setter],
+                                range0
+                            )
+
+                        let modRepr = SynTypeDefnRepr.Simple(SynTypeDefnSimpleRepr.Record(access, originalField :: newFields, range), range)
+                        let newRepr = SynTypeDefnRepr.Simple(SynTypeDefnSimpleRepr.Record(access, idField :: fields, range), range)
+
+                        let modType = SynTypeDefn.TypeDefn(ci, modRepr, [apply], tdRange)
+                        let newType = SynTypeDefn.TypeDefn(oldCi, newRepr, mems @ [toMod; iUniqueImpl], tdRange)
+
+                        newType, modType
+
+                    | _ ->
+                        failwith "unknown kind"
+            | _ ->
+                failwith "unknown kind"
 
 
     [<CompiledName("Run")>]
@@ -809,19 +1363,36 @@ module private Preprocessing =
 
                 match results.ParseTree with
                     | Some ast ->
-                        try
-                            let domainTypes = findDomainTypes log ast
-                            match domainTypes with
-                                | [] -> 
-                                    File.WriteAllText(outputFile, "namespace EmptyDomainTypesNamespace")
-                                    log.LogWarning "no domain-types found"
-                                    return false
-                                | _ -> 
-                                    let str = Generator.generate domainTypes
-                                    File.WriteAllText(outputFile, str)
-                                    return true
-                        with e ->
-                            return false
+//                        try
+                            let nast =
+                                let domainTypes = ast.GetAllDomainTypes() |> Set.map snd
+                                ast.SubstituteTypeDef(fun ns types ->
+                                    types |> List.collect (fun t ->
+                                        if t.IsDomainType then
+                                            let (t', tm) = toModType domainTypes t
+                                            [t'; tm]
+                                        else
+                                            [t]
+                                    )
+                                )
+
+                            let str = Fantomas.CodeFormatter.FormatAST(nast, file, None, { Fantomas.FormatConfig.FormatConfig.Default with StrictMode = true })
+                            File.WriteAllText(outputFile, str)
+                            return true
+//
+//                            let domainTypes = findDomainTypes log ast
+//                            match domainTypes with
+//                                | [] -> 
+//                                    File.WriteAllText(outputFile, "namespace EmptyDomainTypesNamespace")
+//                                    log.LogWarning "no domain-types found"
+//                                    return false
+//                                | _ -> 
+//                                    let str = Generator.generate domainTypes
+//                                    File.WriteAllText(outputFile, str)
+//                                    return true
+//                        with e ->
+//                           
+//                            return false
 
                     | None ->
                         File.Delete outputFile
