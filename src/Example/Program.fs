@@ -8,30 +8,30 @@ open DomainModel
 let main argv = 
     let o0 =
         { 
-            _id = 0L
+            _id = null
             trafo = Trafo3d.Scale 10.0
             model = { fileName = "obj0.obj"; bounds = Box3d.Unit }
         }
 
     let o1 = 
         {
-            _id = 0L
+            _id = null
             trafo = Trafo3d.Translation(1.0, 0.0, 0.0)
             model = { fileName = "obj1.obj"; bounds = Box3d.Unit }
         }
     
     let state =
         {
-            _id = 0L
+            _id = null
             viewTrafo = Trafo3d.Identity
             objects = PSet.ofList [o0]
+            test = [|o0|]
         }
 
 
-
-    let ms = state.ToMod()
+    let scope = ReuseCache()
+    let ms = state.ToMod(scope)
  
-    
     ms.mobjects |> ASet.unsafeRegisterCallbackKeepDisposable (fun o -> 
         o |> List.iter (fun o ->
             match o with
@@ -41,11 +41,11 @@ let main argv =
     ) |> ignore
 
     transact (fun () ->
-        ms.Apply({ state with objects = PSet.add o1 state.objects })
+        scope.Apply(ms, { state with objects = PSet.add o1 state.objects })
     )
 
     transact (fun () ->
-        ms.Apply({ state with objects = PSet.remove o1 state.objects })
+        scope.Apply(ms, { state with objects = PSet.remove o1 state.objects })
     )
 
 

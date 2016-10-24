@@ -372,7 +372,7 @@ module Generator =
                         do! Generator.push
 
                         match mode with
-                            | Immutable -> do! Generator.line "mutable _id : int64"
+                            | Immutable -> do! Generator.line "mutable _id : Id"
                             | Mutable -> do! Generator.line "mutable original : %s" iName
 
                         for (n,t) in d.fields do
@@ -395,7 +395,7 @@ module Generator =
                                 do! Generator.line "{"
                                 do! Generator.push
 
-                                do! Generator.line "_id = 0L"
+                                do! Generator.line "_id = null"
                                 for (n,t) in d.fields do
                                     let! tn = typeString t
                                     do! Generator.line "%s = Unchecked.defaultof<%s>" n tn
@@ -444,7 +444,7 @@ module Generator =
                         let iName = realTypeString Immutable (Local d.name)
 
                         do! Generator.line "[<Extension>]"
-                        do! Generator.line "static member ToMod(l : %s) = " iName
+                        do! Generator.line "static member ToMod(l : %s, cache : ReuseCache) = " iName
                         do! Generator.push
 
                         do! Generator.line "{"
@@ -457,13 +457,13 @@ module Generator =
                                 | Value t ->
                                     match t with
                                         | Local _ ->
-                                            do! Generator.line "m%s = Differential.ToMod(l.%s)" n n
+                                            do! Generator.line "m%s = Differential.ToMod(l.%s, cache)" n n
                                         | _ ->
                                             do! Generator.line "m%s = Mod.init l.%s" n n
                                 | Set t ->
                                     match t with
                                         | Local _ ->
-                                            do! Generator.line "m%s = MapSet(l.%s, Differential.ToMod, Differential.Apply)" n n
+                                            do! Generator.line "m%s = MapSet(cache.GetCache(), l.%s, (fun a -> Differential.ToMod(a, cache)), (fun (v,k) -> Differential.Apply(cache, v, k)))" n n
                                         | _ ->
                                             do! Generator.line "m%s = ResetSet(l.%s)" n n
                                     
@@ -480,7 +480,7 @@ module Generator =
                     | Union d ->
                         let mName = realTypeString Mutable (Local d.name)
                         let iName = realTypeString Immutable (Local d.name)
-                        do! Generator.line "static member ToMod(l : %s) : %s = " iName mName
+                        do! Generator.line "static member ToMod(l : %s, cache : ReuseCache) : %s = " iName mName
                         do! Generator.push
                         do! Generator.line "failwith \"not implemented\""
                         do! Generator.pop
@@ -493,7 +493,7 @@ module Generator =
                         let iName = realTypeString Immutable (Local d.name)
                         
                         do! Generator.line "[<Extension>]"
-                        do! Generator.line "static member Apply(r : %s, l : %s) = " mName iName
+                        do! Generator.line "static member Apply(cache : ReuseCache, r : %s, l : %s) = " mName iName
                         do! Generator.push
                         do! Generator.line "if not (System.Object.ReferenceEquals(l, r.original)) then"
                         do! Generator.push
@@ -525,7 +525,7 @@ module Generator =
                         let mName = realTypeString Mutable (Local d.name)
                         let iName = realTypeString Immutable (Local d.name)
 
-                        do! Generator.line "static member Apply(r : %s, l : %s) : unit = " mName iName
+                        do! Generator.line "static member Apply(cache : ReuseCache, r : %s, l : %s) : unit = " mName iName
                         do! Generator.push
                         do! Generator.line "failwith \"not implemented\""
                         do! Generator.pop

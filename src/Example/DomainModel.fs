@@ -22,6 +22,7 @@ type State =
     {
         viewTrafo   : Trafo3d
         objects     : pset<Object>
+        test        : array<Object>
     }
 
 
