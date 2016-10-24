@@ -576,16 +576,6 @@ module private Preprocessing =
     let checker = FSharpChecker.Create()
 
 
-
-
-    let lines =
-        [
-            "namespace Blubber"
-            "type Seppy() ="
-            "    inherit Test.BaseType()"
-            "    member x.A = 10"
-        ]
-
     let idString (ids : LongIdent) =
         ids |> List.map (fun i -> i.idText) |> String.concat "."
 
@@ -675,7 +665,7 @@ module private Preprocessing =
                 Value(toRealType locals t)
 
 
-    let toAst (locals : Set<string>) (name : string) (def : SynTypeDefnSimpleRepr) =
+    let toAst (log : TaskLoggingHelper) (locals : Set<string>) (name : string) (def : SynTypeDefnSimpleRepr) =
         match def with
             | SynTypeDefnSimpleRepr.Record(_,fields,_) ->
                 let fields =
@@ -686,17 +676,23 @@ module private Preprocessing =
                     )
 
                 Record { name = name; fields = fields }
-            | _ ->
+
+            | SynTypeDefnSimpleRepr.Union(_,cases,_) ->
+                log.LogError("union types are currently not supported as domain-types")
                 failwith ""
 
-    let rec findDomTypes (ns : string) (opened : ref<list<string>>) (locals : Dictionary<string, HashSet<string>>) (d : SynModuleDecl) =
+            | _ ->
+                log.LogError(sprintf "types of kind %A types are currently not supported as domain-types" def)
+                failwith ""
+
+    let rec findDomTypes (log : TaskLoggingHelper) (ns : string) (opened : ref<list<string>>) (locals : Dictionary<string, HashSet<string>>) (d : SynModuleDecl) =
         match d with
             | SynModuleDecl.NestedModule(comp,_,decls,_,_) ->
                 let (SynComponentInfo.ComponentInfo(attributes, typeParams, _, typeId, _, _, _, _)) = comp
                 let name = idString typeId
                 let ns = ns + "." + name
                 let inner = ref !opened
-                decls |> List.collect (fun d -> findDomTypes ns inner locals d)
+                decls |> List.collect (findDomTypes log ns inner locals)
 
             | SynModuleDecl.Open(LongIdentWithDots(name, _),_) ->
                 let str = idString name
@@ -736,7 +732,7 @@ module private Preprocessing =
 
                         match repr with
                             | SynTypeDefnRepr.Simple(simple,_) ->
-                                [ { ns = ns; opens = List.rev !opened; def = toAst visibleLocals name simple }]
+                                [ { ns = ns; opens = List.rev !opened; def = toAst log visibleLocals name simple }]
                                 //[!opened, ns, name, toAst visibleLocals name simple]
                             | _ ->
                                 failwith ""
@@ -746,7 +742,7 @@ module private Preprocessing =
 
             | _ -> []
 
-    let findDomainTypes (ast : ParsedInput) =
+    let findDomainTypes (log : TaskLoggingHelper) (ast : ParsedInput) =
         match ast with
             | ParsedInput.ImplFile(ParsedImplFileInput(_, _, _, _, _, modulesAndNamespaces,_)) ->
                 let locals = Dictionary()
@@ -754,15 +750,57 @@ module private Preprocessing =
                     let ns = idString id
                     let opened = ref []
 
-                    decls |> List.collect (fun d ->
-                        findDomTypes ns opened locals d
-                    )
+                    decls |> List.collect (findDomTypes log ns opened locals)
                 )
             | _ ->
                 []
 
+    
+    open System.Runtime.CompilerServices
+
+    [<AbstractClass; Sealed; Extension>]
+    type Substitution private() =
+
+        [<Extension>]
+        static member SubstituteTypeDef (ast : list<SynModuleDecl>, f : SynTypeDefn -> list<SynTypeDefn>) : list<SynModuleDecl> =
+            let rec substituteSingle (m : SynModuleDecl) =
+                match m with
+                    | SynModuleDecl.NestedModule(a,b,decls,d,e) ->
+                        SynModuleDecl.NestedModule(a, b, substitute decls, d, e)
+
+                    | SynModuleDecl.Types(defs, range) ->
+                        SynModuleDecl.Types(defs |> List.collect f, range)
+
+                    | _ ->
+                        m
+
+            and substitute (m : list<SynModuleDecl>) =
+                match m with
+                    | [] -> []
+                    | m :: rest ->
+                        let newHead = substituteSingle m
+                        newHead :: substitute rest
+
+            substitute ast
+
+        [<Extension>]
+        static member SubstituteTypeDef (ast : SynModuleOrNamespace, f : SynTypeDefn -> list<SynTypeDefn>) : SynModuleOrNamespace =
+            let (SynModuleOrNamespace(id,a,b,decls,c,d,e,ff)) = ast
+            SynModuleOrNamespace(id, a, b, Substitution.SubstituteTypeDef(decls, f), c, d, e, ff)
+
+        [<Extension>]
+        static member SubstituteTypeDef (ast : ParsedInput, f : SynTypeDefn -> list<SynTypeDefn>) =
+            match ast with
+                | ParsedInput.ImplFile(ParsedImplFileInput(fileName, isScript, qualName, scopedPragma, parsedHashDirectives, modulesAndNamespaces, dunno)) ->
+                    ParsedInput.ImplFile(ParsedImplFileInput(fileName, isScript, qualName, scopedPragma, parsedHashDirectives, modulesAndNamespaces |> List.map (fun m -> Substitution.SubstituteTypeDef(m,f)), dunno))
+                | ast ->
+                    ast
+        
+
+
+
     [<CompiledName("Run")>]
-    let run (file : string) (outputFile : string) =
+    let run (log : TaskLoggingHelper) (file : string) (outputFile : string) =
         let run = 
             async {
                 let input = File.ReadAllText file
@@ -771,15 +809,23 @@ module private Preprocessing =
 
                 match results.ParseTree with
                     | Some ast ->
-                        let domainTypes = findDomainTypes ast
-
-                        let str = Generator.generate domainTypes
-
-        
-                        File.WriteAllText(outputFile, str)
+                        try
+                            let domainTypes = findDomainTypes log ast
+                            match domainTypes with
+                                | [] -> 
+                                    File.WriteAllText(outputFile, "namespace EmptyDomainTypesNamespace")
+                                    log.LogWarning "no domain-types found"
+                                    return false
+                                | _ -> 
+                                    let str = Generator.generate domainTypes
+                                    File.WriteAllText(outputFile, str)
+                                    return true
+                        with e ->
+                            return false
 
                     | None ->
                         File.Delete outputFile
+                        return false
             }
         Async.RunSynchronously run
 
@@ -796,13 +842,16 @@ type Preprocess() =
         if Set.contains item all then
             let fileName = Path.GetFileNameWithoutExtension item
             let domFile = fileName + ".g.fs"
-            Preprocessing.run (Path.Combine(System.Environment.CurrentDirectory, item)) (Path.Combine(System.Environment.CurrentDirectory,domFile))
-
-            results <- [|item; domFile|]
+            let res = Preprocessing.run x.Log (Path.Combine(System.Environment.CurrentDirectory, item)) (Path.Combine(System.Environment.CurrentDirectory,domFile)) 
+            if res then
+                results <- [|item; domFile|]
+                true
+            else
+                results <- [|item|]
+                false
         else
             results <- [|item|]
-
-        true
+            true
 
     [<Required>]
     member x.Item
