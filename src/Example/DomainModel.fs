@@ -27,3 +27,11 @@ type State =
     }
 
 
+module Bla =
+    let initial = 
+        { 
+            primary = { name = "hugo"; trafo = Trafo3d.Identity; model = { fileName = "asdasd"; bounds = Box3d.Invalid }}
+            viewTrafo = Trafo3d.Identity
+            objects = PSet.empty
+            test = [||]
+        }

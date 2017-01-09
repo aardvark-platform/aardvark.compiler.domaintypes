@@ -815,8 +815,137 @@ module private Preprocessing =
 
             build l
 
+    module SynIndexerArg =
+        let map (f : SynExpr -> SynExpr) (m : SynIndexerArg) =
+            match m with
+                | SynIndexerArg.One(a) -> SynIndexerArg.One(f a)
+                | SynIndexerArg.Two(a, b) -> SynIndexerArg.Two(f a, f b)
+    module SynBinding =
+        let map (f : SynExpr -> SynExpr) (m : SynBinding) =
+            let (SynBinding.Binding(access,kind,mustInline,isMutable,attributes,xmlDoc,synVal,pattern,retInfo,rhs,range,seqInfo)) = m
+            SynBinding.Binding(access, kind, mustInline, isMutable, attributes, xmlDoc, synVal, pattern, retInfo, f rhs, range, seqInfo)
+
+    module SynMatchClause =
+        let map (f : SynExpr -> SynExpr) (m : SynMatchClause) =
+            let (SynMatchClause.Clause(a,b,c,d,e)) = m
+            SynMatchClause.Clause(a, Option.map f b, f c, d, e)
+
+    module SynInterfaceImpl =
+        let map (f : SynExpr -> SynExpr) (m : SynInterfaceImpl) =
+            let (SynInterfaceImpl.InterfaceImpl(a,b,c)) = m
+            SynInterfaceImpl.InterfaceImpl(a, List.map (SynBinding.map f) b, c)
+
+    let rec substitute (f : SynExpr -> Option<SynExpr>) (e : SynExpr) =
+        match f e with
+            | Some res -> res
+            | None ->
+                let substitute = substitute f
+                match e with
+                    | SynExpr.AddressOf(a,e,b,c)            -> SynExpr.AddressOf(a, substitute e, b, c)
+                    | SynExpr.App(a,b,c,d,e)                -> SynExpr.App(a,b,substitute c,substitute d,e)
+                    | SynExpr.ArrayOrList(a,b,c)            -> SynExpr.ArrayOrList(a, b |> List.map (substitute), c)
+                    | SynExpr.ArrayOrListOfSeqExpr(a,b,c)   -> SynExpr.ArrayOrListOfSeqExpr(a,substitute b,c)
+                    | SynExpr.Assert(a,b)                   -> SynExpr.Assert(substitute a, b)
+                    | SynExpr.CompExpr(a,b,c,d)             -> SynExpr.CompExpr(a, b, substitute c, d)
+                    | SynExpr.DiscardAfterMissingQualificationAfterDot(a,b) -> SynExpr.DiscardAfterMissingQualificationAfterDot(substitute a,b)
+                    | SynExpr.Do(a,b)                       -> SynExpr.Do(substitute a, b)
+                    | SynExpr.DoBang(a,b)                   -> SynExpr.DoBang(substitute a, b)
+                    | SynExpr.DotGet(a,b,c,d)               -> SynExpr.DotGet(substitute a,b,c,d)
+                    | SynExpr.DotIndexedGet(a,b,c,d)        -> SynExpr.DotIndexedGet(substitute a,List.map (SynIndexerArg.map (substitute)) b,c,d)
+                    | SynExpr.DotIndexedSet(a,b,c,d,e,f)    -> SynExpr.DotIndexedSet(substitute a, List.map (SynIndexerArg.map (substitute)) b, substitute c, d, e, f)
+                    | SynExpr.DotNamedIndexedPropertySet(a,b,c,d,e) -> SynExpr.DotNamedIndexedPropertySet(substitute a, b, substitute c, substitute d, e)
+
+                    | SynExpr.DotSet(a,b,c,d)               -> SynExpr.DotSet(substitute a, b, substitute c, d)
+                    | SynExpr.Downcast(a,b,c)               -> SynExpr.Downcast(substitute a, b, c)
+                    | SynExpr.Fixed(a,b)                    -> SynExpr.Fixed(substitute a, b)
+                    | SynExpr.For(a,b,c,d,e,f,g)            -> SynExpr.For(a, b, substitute c, d, substitute e, substitute f, g)
+                    | SynExpr.ForEach(a,b,c,d,e,f,g)        -> SynExpr.ForEach(a, b, c, d, substitute e, substitute f, g)
+                    | SynExpr.FromParseError(a,b)           -> SynExpr.FromParseError(substitute a, b)
+                    | SynExpr.IfThenElse(a,b,c,d,e,f,g)     -> SynExpr.IfThenElse(substitute a, substitute b, Option.map substitute c, d, e, f, g)
+                    | SynExpr.InferredDowncast(a,b)         -> SynExpr.InferredDowncast(substitute a, b)
+                    | SynExpr.InferredUpcast(a,b)           -> SynExpr.InferredUpcast(substitute a, b)
+                    | SynExpr.JoinIn(a,b,c,d)               -> SynExpr.JoinIn(substitute a, b, substitute c, d)
+                    | SynExpr.Lambda(a,b,c,d,e)             -> SynExpr.Lambda(a,b,c,substitute d,e)
+                    | SynExpr.Lazy(a,b)                     -> SynExpr.Lazy(substitute a, b)
+                    | SynExpr.LetOrUse(a,b,c,d,e)           -> SynExpr.LetOrUse(a, b, List.map (SynBinding.map substitute) c, substitute d, e)
+                    | SynExpr.LetOrUseBang(a,b,c,d,e,f,g)   -> SynExpr.LetOrUseBang(a, b, c, d, substitute e, substitute f, g)
+                    | SynExpr.LongIdentSet(a,b,c)           -> SynExpr.LongIdentSet(a, substitute b, c)
+                    | SynExpr.Match(a,b,c,d,e)              -> SynExpr.Match(a, substitute b, List.map (SynMatchClause.map substitute) c, d, e)
+                    | SynExpr.MatchLambda(a,b,c,d,e)        -> SynExpr.MatchLambda(a, b, List.map (SynMatchClause.map substitute) c, d, e)
+                    | SynExpr.NamedIndexedPropertySet(a,b,c,d) -> SynExpr.NamedIndexedPropertySet(a, substitute b, substitute c, d)
+                    | SynExpr.New(a,b,c,d)                  -> SynExpr.New(a, b, substitute c, d)
+                    | SynExpr.ObjExpr(a,b,c,d,e,f)          -> SynExpr.ObjExpr(a, b |> Option.map (fun (a,b) -> (substitute a,b)), List.map (SynBinding.map substitute) c , List.map (SynInterfaceImpl.map substitute) d, e, f) 
+                    | SynExpr.Paren(a,b,c,d)                -> SynExpr.Paren(substitute a, b, c, d)
+                    | SynExpr.Quote(a,b,c,d,e)              -> SynExpr.Quote(substitute a, b, substitute c, d, e)
+                    
+                    | SynExpr.Record(a,b,c,d)               ->
+                        let a =
+                            match a with
+                                | Some(a,b,c,d,e) -> Some(a, substitute b,c,d,e)
+                                | None -> None
+                        let b =
+                            match b with
+                                | Some(a,b) -> Some(substitute a, b)
+                                | None -> None
+                        let c =
+                            c |> List.map (fun (a,b,c) ->
+                                a, Option.map substitute b, c
+                            )
+                        SynExpr.Record(a,b,c,d)
+
+                    | SynExpr.Sequential(a,b,c,d,e)         -> SynExpr.Sequential(a, b, substitute c, substitute d, e)
+                    | SynExpr.TraitCall(a,b,c,d)            -> SynExpr.TraitCall(a, b, substitute c, d)
+                    | SynExpr.TryFinally(a,b,c,d,e)         -> SynExpr.TryFinally(substitute a, substitute b, c, d, e)
+                    | SynExpr.TryWith(a,b,c,d,e,f,g)        -> SynExpr.TryWith(substitute a, b, List.map (SynMatchClause.map substitute) c, d, e, f, g)
+                    | SynExpr.Tuple(a,b,c)                  -> SynExpr.Tuple(List.map substitute a, b, c)
+                    | SynExpr.TypeApp(a,b,c,d,e,f,g)        -> SynExpr.TypeApp(substitute a, b, c, d, e, f, g)
+                    | SynExpr.Typed(a,b,c)                  -> SynExpr.Typed(substitute a, b, c)
+                    | SynExpr.TypeTest(a,b,c)               -> SynExpr.TypeTest(substitute a, b, c)
+                    | SynExpr.Upcast(a,b,c)                 -> SynExpr.Upcast(substitute a, b, c)
+                    | SynExpr.While(a,b,c,d)                -> SynExpr.While(a, substitute b, substitute c, d)
+                    | SynExpr.YieldOrReturn(a,b,c)          -> SynExpr.YieldOrReturn(a, substitute b, c)
+                    | SynExpr.YieldOrReturnFrom(a,b,c)      -> SynExpr.YieldOrReturnFrom(a, substitute b, c)
+
+
+                    | SynExpr.LibraryOnlyILAssembly _
+                    | SynExpr.LibraryOnlyStaticOptimization _
+                    | SynExpr.LibraryOnlyUnionCaseFieldGet _
+                    | SynExpr.LibraryOnlyUnionCaseFieldSet _ ->
+                        e
+                    
+                    | SynExpr.Null _
+                    | SynExpr.LongIdent _ 
+                    | SynExpr.ImplicitZero _
+                    | SynExpr.Ident _
+                    | SynExpr.Const _ 
+                    | SynExpr.ArbitraryAfterError _ -> 
+                        e
+                  
     [<AbstractClass; Sealed; Extension>]
     type Substitution private() =
+
+        static member LiftRecordConstructions(e : SynExpr) =
+            let replaceNewRecord (e : SynExpr) =
+                match e with
+                    | SynExpr.Record(None,None,fields,d) ->
+                        let id = LongIdentWithDots([Ident("_id", range0)], [range0]), true
+                        let e = SynExpr.Null(range0)
+                        let sep : BlockSeparator = range0, None
+
+                        let fields = 
+                            fields |> List.map (fun (id,e,s) -> 
+                                match e with
+                                    | Some e -> (id, Substitution.LiftRecordConstructions(e) |> Some, s)
+                                    | None -> (id, None, s)
+                            )
+
+                        let fields = (id, Some e, Some sep) :: fields
+                        SynExpr.Record(None, None, fields, d) |> Some
+                    | _ ->
+                        None
+
+            substitute replaceNewRecord e
+
 
         [<Extension>]
         static member SubstituteTypeDef (ast : list<SynModuleDecl>, ns : string, f : string -> list<SynTypeDefn> -> list<SynTypeDefn>) : list<SynModuleDecl> =
@@ -828,6 +957,15 @@ module private Preprocessing =
 
                     | SynModuleDecl.Types(defs, range) ->
                         SynModuleDecl.Types(f ns defs, range)
+
+                    | SynModuleDecl.Let(isRec, bindings, range) ->
+                        let newBindings =
+                            bindings |> List.map (fun (SynBinding.Binding(access,kind,mustInline,isMutable,attributes,xmlDoc,synVal,pattern,retInfo,rhs,range,seqInfo)) ->
+                                let rhs = Substitution.LiftRecordConstructions(rhs)
+                                SynBinding.Binding(access,kind,mustInline,isMutable,attributes,xmlDoc,synVal,pattern,retInfo,rhs,range,seqInfo)
+                            )
+
+                        SynModuleDecl.Let(isRec, newBindings, range)
 
                     | _ ->
                         m

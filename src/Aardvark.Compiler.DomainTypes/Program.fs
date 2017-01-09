@@ -5,10 +5,10 @@ module Main =
     open Aardvark.Compiler.DomainTypes
 
 
-    //[<EntryPoint>]
+    [<EntryPoint>]
     let main args =
         let task = Preprocess()
-        let item = @"C:\Users\Schorsch\Development\aardvark-compiler-domaintypes\src\Example\DomainModel.fs"
+        let item = @"C:\Development\diffgenerator\src\Example\DomainModel.fs"
         task.Current <- item
         task.Item <- item
         task.Execute() |> ignore
