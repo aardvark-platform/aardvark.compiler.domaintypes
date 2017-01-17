@@ -7,5 +7,3 @@ files
     ..\..\bin\Release\Aardvark.Compiler.DomainTypes.dll ==> build
     ..\..\bin\Release\Aardvark.Compiler.DomainTypes.targets ==> build
 	..\..\bin\Release\FSharp.Compiler.Service.dll ==> build
-dependencies
-	FSharp.Compiler.Service   ~> 6.0.2 
