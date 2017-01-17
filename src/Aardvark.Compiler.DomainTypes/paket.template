@@ -6,9 +6,9 @@ description
 files
     ..\..\bin\Release\Aardvark.Compiler.DomainTypes.dll ==> build
     ..\..\bin\Release\Aardvark.Compiler.DomainTypes.targets ==> build
-    ..\..\bin\Release\FSharp.Compiler.Service.dll ==> build
 dependencies
 	Aardvark.Base             >= 2.3.1
 	Aardvark.Base.FSharp      >= 2.3.1
 	Aardvark.Base.Incremental >= 2.3.1
 	Aardvark.Base.Essentials  >= 2.3.1
+	FSharp.Compiler.Service   ~> 6.0.2 

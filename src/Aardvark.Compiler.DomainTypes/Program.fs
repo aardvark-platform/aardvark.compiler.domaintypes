@@ -1,5 +1,7 @@
 ﻿namespace Program
 
+open System.IO
+
 
 module Main = 
     open Aardvark.Compiler.DomainTypes
@@ -8,7 +10,7 @@ module Main =
     [<EntryPoint>]
     let main args =
         let task = Preprocess()
-        let item = @"C:\Development\diffgenerator\src\Example\DomainModel.fs"
+        let item = Path.Combine(__SOURCE_DIRECTORY__, @"..\Example\Tests.fs")
         task.Current <- item
         task.Item <- item
         task.Execute() |> ignore

@@ -50,6 +50,7 @@
     <Reference Include="System.Numerics" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Tests.fs" />
     <Compile Include="DomainModel.fs">
       <DomainTypes>True</DomainTypes>
     </Compile>

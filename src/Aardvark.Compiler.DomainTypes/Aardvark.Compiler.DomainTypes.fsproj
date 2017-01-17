@@ -67,6 +67,8 @@
     </None>
     <Compile Include="PreProcessor.fs" />
     <Compile Include="Program.fs" />
+    <None Include="paket.references" />
+    <None Include="paket.template" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Microsoft.Build.Framework" />
