@@ -10,7 +10,7 @@ module Main =
     [<EntryPoint>]
     let main args =
         let task = Preprocess()
-        let item = Path.Combine(__SOURCE_DIRECTORY__, @"..\Example\Tests.fs")
+        let item = Path.Combine(__SOURCE_DIRECTORY__, @"..\Example\DomainModel.fs")
         task.Current <- item
         task.Item <- item
         task.Execute() |> ignore

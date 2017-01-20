@@ -7,12 +7,12 @@ open Aardvark.Base.Incremental
 
 module TranslateController =
 
-    type Axis = X | Y | Z
+    [<DomainType>]
+    type MyOption<'a> = MyNone | MySome of 'a
 
     [<DomainType>]
     type Model = {
-        hovered           : Option<Axis>
-        activeTranslation : Option<Plane3d * V3d>
+        hovered           : Option<int>
         trafo             : Trafo3d
     }
 
@@ -20,7 +20,7 @@ module TranslateController =
     type Scene = 
         {
             camera : int
-            scene : Model
+            scene : MyOption<Model>
         }
 
 
@@ -63,43 +63,43 @@ module TranslateController =
 //    }
 
 
-module SharedModel =
-    
-    [<DomainType>]
-    type TranslateModel = {
-        hovered           : Option<TranslateController.Axis>
-        activeTranslation : Option<Plane3d * V3d>
-        trafo             : Trafo3d
-    }
-
-    [<DomainType>]
-    type TranslateScene = 
-        {
-            camera : int
-            scene : TranslateModel
-        }
-
-    [<DomainType>]
-    type Ui = { cnt : int; info : string }
-
-    [<DomainType>]
-    type Model = { ui : Ui; scene : TranslateScene }
-
-module SharedModel2 =
-   
-
-    [<DomainType>]
-    type Ui = { cnt : int; info : string }
-
-    [<DomainType>]
-    type Model = { ui : Ui; scene : TranslateController.Scene }
-
-module SharedModel3 =
-   
-    open TranslateController
-
-    [<DomainType>]
-    type Ui = { cnt : int; info : string }
-
-    [<DomainType>]
-    type Model = { ui : Ui; scene : Scene }
+//module SharedModel =
+//    
+//    [<DomainType>]
+//    type TranslateModel = {
+//        hovered           : Option<TranslateController.Axis>
+//        activeTranslation : Option<Plane3d * V3d>
+//        trafo             : Trafo3d
+//    }
+//
+//    [<DomainType>]
+//    type TranslateScene = 
+//        {
+//            camera : int
+//            scene : TranslateModel
+//        }
+//
+//    [<DomainType>]
+//    type Ui = { cnt : int; info : string }
+//
+//    [<DomainType>]
+//    type Model = { ui : Ui; scene : TranslateScene }
+//
+//module SharedModel2 =
+//   
+//
+//    [<DomainType>]
+//    type Ui = { cnt : int; info : string }
+//
+//    [<DomainType>]
+//    type Model = { ui : Ui; scene : TranslateController.Scene }
+//
+//module SharedModel3 =
+//   
+//    open TranslateController
+//
+//    [<DomainType>]
+//    type Ui = { cnt : int; info : string }
+//
+//    [<DomainType>]
+//    type Model = { ui : Ui; scene : Scene }
