@@ -1489,18 +1489,32 @@ module private Preprocessing =
                         let modType = SynTypeDefn.TypeDefn(ci, modRepr, [apply], tdRange)
                         let newType = SynTypeDefn.TypeDefn(oldCi, newRepr, mems @ [toMod; iUniqueImpl], tdRange)
 
-                        newType, modType
+                        [ newType;  modType ]
 
                     | SynTypeDefnSimpleRepr.Union(access,cases,range) ->
                         let newCases = 
                             cases 
                              |> List.map (fun case -> 
                                 let (UnionCase(attribs,ident,caseType,xml,access,range)) = case
+                                let newType =
+                                    match caseType with
+                                        | SynUnionCaseType.UnionCaseFields fields -> 
+                                            let newFields = fields |> List.map (toModField domainTypes)
+                                            SynUnionCaseType.UnionCaseFields fields
+                                        | SynUnionCaseType.UnionCaseFullType(synType,valInfo) -> 
+                                            failwith ""
                                 let newIdent = Ident("M" + ident.idText, ident.idRange)
-                                UnionCase(attribs,newIdent,caseType,xml,access,range)
+                                UnionCase(attribs,newIdent,newType,xml,access,range)
                              )
 
-                        failwith "unknown kind"
+                        let originalField = SynField.Field([], false, Some (Ident("_original", range0)), tName, true, PreXmlDocEmpty, None, range0)
+                        let modUnion = SynTypeDefnSimpleRepr.Union(access,newCases,range)
+                        let modUnionType = SynType.LongIdent(LongIdentWithDots(id, []))
+
+                        let recordField = SynField.Field([], false, Some (Ident ("Value", range0)), modUnion, true, PreXmlDocEmpty,None,range0)
+                        let modRepr = SynTypeDefnRepr.Simple(SynTypeDefnSimpleRepr.Record(access, originalField :: recordField, range), range)
+
+                        []
             | _ ->
                 failwith "unknown kind"
 
@@ -1521,8 +1535,9 @@ module private Preprocessing =
                                 ast.SubstituteTypeDef(fun ns types ->
                                     types |> List.collect (fun t ->
                                         if t.IsDomainType then
-                                            let (t', tm) = toModType domainTypes t
-                                            [t'; tm]
+                                            let newTypeAndModType = toModType domainTypes t
+                                            //[t'; tm]
+                                            newTypeAndModType 
                                         else
                                             [t]
                                     )

@@ -7,7 +7,7 @@ open Aardvark.Base.Incremental
 
 module TranslateController =
 
-    [<DomainType>]
+    //[<DomainType>]
     type MyOption<'a> = MyNone | MySome of 'a
 
     [<DomainType>]
