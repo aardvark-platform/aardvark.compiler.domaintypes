@@ -26,7 +26,6 @@ type State =
         test        : array<Object>
     }
 
-
 namespace DomainModel
 open System
 open Aardvark.Base.Incremental
@@ -38,9 +37,9 @@ type MObject(__initial : DomainModel.Object) =
     let _trafo = ResetMod(__initial.trafo)
     let _model = ResetMod(__initial.model)
 
-    member x.name = _name
-    member x.trafo = _trafo
-    member x.model = _model
+    member x.name = _name :> IMod<_>
+    member x.trafo = _trafo :> IMod<_>
+    member x.model = _model :> IMod<_>
 
     member x.Apply(__model : DomainModel.Object) =
         if not (Object.ReferenceEquals(__model, __current)) then
@@ -61,10 +60,10 @@ type MState(__initial : DomainModel.State) =
     let _objects = ResetMod(__initial.objects)
     let _test = ResetMod(__initial.test)
 
-    member x.primary : MObject = _primary
-    member x.viewTrafo = _viewTrafo
-    member x.objects = _objects
-    member x.test = _test
+    member x.primary = _primary
+    member x.viewTrafo = _viewTrafo :> IMod<_>
+    member x.objects = _objects :> IMod<_>
+    member x.test = _test :> IMod<_>
 
     member x.Apply(__model : DomainModel.State) =
         if not (Object.ReferenceEquals(__model, __current)) then
@@ -73,7 +72,6 @@ type MState(__initial : DomainModel.State) =
             _viewTrafo.Update(__model.viewTrafo)
             _objects.Update(__model.objects)
             _test.Update(__model.test)
-
 //module Bla =
 //    let initial = 
 //        { 

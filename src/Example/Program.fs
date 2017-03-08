@@ -21,6 +21,15 @@ let main argv =
 
     let name = mstate.primary.name
 
+    let a = mstate.viewTrafo.GetValue()
+    printfn "%A" a.Forward
+
+    transact (fun () ->
+        mstate.Apply({ state with viewTrafo = Trafo3d.Scale(2.0) })
+    )
+    let b = mstate.viewTrafo.GetValue()
+    printfn "%A" b.Forward
+    System.Environment.Exit 0
 
 
 //    [<DomainType>]

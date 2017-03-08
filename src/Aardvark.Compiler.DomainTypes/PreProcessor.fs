@@ -1643,7 +1643,7 @@ module Preprocessing =
 
                 let resetType, iface =
                     if false then "", ""
-                    else "ResetMod", "IMod<{0}>"
+                    else "ResetMod", "IMod<_>"
 
 
                 printfn ""
@@ -1662,7 +1662,6 @@ module Preprocessing =
                 for (isDomain, f) in fields do
                     let fName = f.Name
                     if not isDomain then
-                        let iface = String.Format(iface, FSharpType.immutableName f.FieldType)
                         printfn "    member x.%s = _%s :> %s" fName fName iface
                     else
                         printfn "    member x.%s = _%s" fName fName
