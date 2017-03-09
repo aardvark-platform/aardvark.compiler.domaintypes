@@ -135,7 +135,7 @@ let main argv =
             "System.Reflection.Metadata.dll"
         ]
 
-    let test = Preprocessing.run fsProjPath references files |> Option.get
+    let test = Preprocessing.run fsProjPath references files |> Async.RunSynchronously |> Option.get
 
     for (f,content) in Map.toSeq test do
         let path = System.IO.Path.ChangeExtension(f, ".g.fs")

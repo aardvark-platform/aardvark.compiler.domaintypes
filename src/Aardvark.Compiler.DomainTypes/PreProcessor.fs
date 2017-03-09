@@ -135,7 +135,6 @@ module CodeGenerator =
 module Preprocessing =
     open CodeGenerator
     open Microsoft.FSharp.Compiler
-    open Microsoft.FSharp.Compiler.SourceCodeServices.ProjectCrackerTool
     open Microsoft.FSharp.Compiler.SourceCodeServices
     
     let checker = FSharpChecker.Create(keepAssemblyContents = true)
@@ -569,26 +568,9 @@ module Preprocessing =
 
         }
 
-    let runInternal (fsProjPath : string) (references : Set<string>) (files : list<string>) =
+    let runWithOptions (options : FSharpProjectOptions) =
         async {
-            let sw = System.Diagnostics.Stopwatch()
-            sw.Start()
-
-            let dir = Path.GetDirectoryName fsProjPath
-            let outDir = Path.Combine(dir, "..", "..", "bin", "Debug")
-
-            let fsCorePath = @"C:\Program Files (x86)\Reference Assemblies\Microsoft\FSharp\.NETFramework\v4.0\4.4.0.0\FSharp.Core.dll"
-
-            let references = Set.add fsCorePath references
-
-            sw.Stop()
-            let options = getProjectOptions fsProjPath (Set.toList references) files
-            printfn "project: %.1fs" sw.Elapsed.TotalSeconds
-            sw.Restart()
-
             let! res = checker.ParseAndCheckProject(options)
-            sw.Stop()
-            printfn "check:   %.1fs" sw.Elapsed.TotalSeconds
 
             if res.HasCriticalErrors then
                 return None
@@ -605,6 +587,19 @@ module Preprocessing =
 
                 let code = domainTypes |> Map.map (fun _ c -> generateMutableModels c |> run)
                 return Some code
+        }
+
+    let runInternal (fsProjPath : string) (references : Set<string>) (files : list<string>) =
+        async {
+            let dir = Path.GetDirectoryName fsProjPath
+            let outDir = Path.Combine(dir, "..", "..", "bin", "Debug")
+
+            let fsCorePath = @"C:\Program Files (x86)\Reference Assemblies\Microsoft\FSharp\.NETFramework\v4.0\4.4.0.0\FSharp.Core.dll"
+
+            let references = Set.add fsCorePath references
+
+            let options = getProjectOptions fsProjPath (Set.toList references) files
+            return! runWithOptions options
         }
 
     let run (fsProjPath : string) (references : Set<string>) (files : list<string>) =
@@ -632,8 +627,7 @@ module Preprocessing =
                     Path.Combine(dir, r)
             )
 
-        let test = runInternal fsProjPath references files |> Async.RunSynchronously
-        test
+        runInternal fsProjPath references files
 
 type Preprocess() =
     inherit Task()
