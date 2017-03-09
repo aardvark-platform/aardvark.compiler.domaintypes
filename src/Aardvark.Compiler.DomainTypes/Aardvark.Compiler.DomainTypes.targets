@@ -1,18 +1,16 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <UsingTask TaskName="Aardvark.Compiler.DomainTypes.Preprocess" AssemblyFile="Aardvark.Compiler.DomainTypes.dll" />
-  <Target Name="UpdateGeneratedFiles" BeforeTargets="BeforeResolveReferences" Condition="'@(Compile)' != ''">
+  <Target Name="UpdateGeneratedFiles" AfterTargets="AfterResolveReferences" Condition="'@(Compile)' != ''">
     <ItemGroup>
-      <Current Include="@(Compile)" Condition="'%(Compile.DomainTypes)' == 'True'" />
       <OldItems Include="@(Compile)" />
     </ItemGroup>
-    <Preprocess Item="%(OldItems.Identity)" Current="@(Current)">
+    <Preprocess Debug="$(DebugHate)" Files="@(OldItems)" References="@(_ResolveAssemblyReferenceResolvedFiles)" ProjectFile="$(MSBuildProjectFullPath)">
       <Output TaskParameter="Results" ItemName="Results" />
     </Preprocess>
     <ItemGroup>
       <Compile Remove="@(OldItems)" />
       <Compile Include="@(Results)" />
       <OldItems Remove="@(OldItems)" />
-      <Current Remove="@(Current)" />
       <Results Remove="@(Results)" />
     </ItemGroup>
   </Target>

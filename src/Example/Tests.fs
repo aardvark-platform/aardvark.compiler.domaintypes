@@ -1,27 +1,26 @@
-﻿namespace Scratch.DomainTypes
+﻿namespace Scratch.DomainTypes.TranslateController
 
 open System
 open Aardvark.Base
 open Aardvark.Base.Incremental
 
 
-module TranslateController =
 
-    //[<DomainType>]
-    type MyOption<'a> = MyNone | MySome of 'a
+//[<DomainType>]
+type MyOption<'a> = MyNone | MySome of 'a
 
-    [<DomainType>]
-    type Model = {
-        hovered           : Option<int>
-        trafo             : Trafo3d
+[<DomainType>]
+type Model = {
+    hovered           : Option<int>
+    trafo             : Trafo3d
+}
+
+[<DomainType>]
+type Scene = 
+    {
+        camera : int
+        scene : MyOption<Model>
     }
-
-    [<DomainType>]
-    type Scene = 
-        {
-            camera : int
-            scene : MyOption<Model>
-        }
 
 
 //module SimpleDrawingApp =

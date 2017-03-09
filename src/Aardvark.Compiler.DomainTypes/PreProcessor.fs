@@ -594,10 +594,6 @@ module Preprocessing =
             let dir = Path.GetDirectoryName fsProjPath
             let outDir = Path.Combine(dir, "..", "..", "bin", "Debug")
 
-            let fsCorePath = @"C:\Program Files (x86)\Reference Assemblies\Microsoft\FSharp\.NETFramework\v4.0\4.4.0.0\FSharp.Core.dll"
-
-            let references = Set.add fsCorePath references
-
             let options = getProjectOptions fsProjPath (Set.toList references) files
             return! runWithOptions options
         }
@@ -632,37 +628,80 @@ module Preprocessing =
 type Preprocess() =
     inherit Task()
 
-    let mutable item = ""
-    let mutable current = ""
-    let mutable results = [||]
+    let mutable debug = false
+    let mutable files : string[] = [||]
+    let mutable references : string[] = [||]
+    let mutable projectFile = ""
+    let mutable results : string[] = [||]
 
     override x.Execute() =
-        let all = current.Split([|';'|], StringSplitOptions.RemoveEmptyEntries) |> Set.ofArray
+        if debug then
+            System.Diagnostics.Debugger.Launch() |> ignore
 
-        if Set.contains item all then
-            let fileName = Path.GetFileNameWithoutExtension item
-            let domFile = fileName + ".g.fs"
-            let res = failwith "" //Preprocessing.run x.Log (Path.Combine(System.Environment.CurrentDirectory, item)) (Path.Combine(System.Environment.CurrentDirectory,domFile)) 
-            if res then
-                results <- [|item; domFile|]
+        let res = Preprocessing.run projectFile (Set.ofArray references) (Array.toList files) |> Async.RunSynchronously
+        results <- files
+
+        let projectDir = Path.GetDirectoryName projectFile
+
+        match res with
+            | Some res ->
+                for (f,content) in Map.toSeq res do
+                    let path = System.IO.Path.ChangeExtension(f, ".g.fs")
+                    x.Log.LogMessage(sprintf "generated DomainFile %s" (Path.GetFileName path))
+
+                    let old = 
+                        if File.Exists path then File.ReadAllText path
+                        else ""
+
+                    if old <> content then
+                        File.WriteAllText(path, content)
+
+                let files = 
+                    files |> Array.map (fun f ->
+                        Path.Combine(projectDir, f) |> Path.GetFullPath
+                    )
+
+                let fscFiles =
+                    files |> Array.collect (fun f ->
+                        let gf = System.IO.Path.ChangeExtension(f, ".g.fs")
+
+                        if files |> Array.exists (fun f -> f = gf) then
+                            [| f |]
+                        else
+                            match Map.tryFind f res with
+                                | Some _ -> [| f; gf |]
+                                | None -> [| f |]
+                    )
+
+                results <- fscFiles
+
                 true
-            else
-                results <- [|item|]
+
+            | None ->
+                x.Log.LogError("something went wrong")
                 false
-        else
-            results <- [|item|]
-            true
+
+
+    member x.Debug
+        with get() = debug
+        and set i = debug <- i
 
     [<Required>]
-    member x.Item
-        with get() = item
-        and set i = item <- i
+    member x.Files
+        with get() = files
+        and set i = files <- i
 
     [<Required>]
-    member x.Current
-        with get() = current
-        and set c = current <- c
+    member x.References
+        with get() = references
+        and set c = references <- c
 
+    [<Required>]
+    member x.ProjectFile
+        with get() = projectFile
+        and set f = projectFile <- f
+
+   
     [<Output>]
     member x.Results
         with get() = results
