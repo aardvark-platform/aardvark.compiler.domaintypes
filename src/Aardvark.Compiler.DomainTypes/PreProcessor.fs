@@ -619,8 +619,10 @@ module Preprocessing =
                 | Module(name, suffix, children) ->
                     if suffix then
                         do! line "[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]"
-                    do! line "module %s" name
+                    do! line "module %s =" name
                     do! push
+                    do! line "open %s" name
+                    do! line ""
                     for c in children do
                         do! generateMutableModel c
                     do! pop

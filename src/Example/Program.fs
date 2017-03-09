@@ -2,8 +2,8 @@
 // See the 'F# Tutorial' project for more help.
 open Aardvark.Base
 open Aardvark.Base.Incremental
-open DomainModel
-open DomainModel.Mutable
+open DomainModel.Blubber
+open DomainModel.Mutable.Blubber
 open Aardvark.Compiler.DomainTypes
 
 
