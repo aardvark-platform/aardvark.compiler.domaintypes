@@ -14,7 +14,7 @@
     <TargetFSharpCoreVersion>4.4.0.0</TargetFSharpCoreVersion>
     <Name>Example</Name>
     <TargetFrameworkProfile />
-	<DebugHate>False</DebugHate>
+	<DebugHate>True</DebugHate>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>

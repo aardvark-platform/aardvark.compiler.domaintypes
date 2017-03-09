@@ -210,18 +210,51 @@ module Preprocessing =
         let treatAsValue (f : FSharpField) =
             f.PropertyAttributes |> Seq.exists (fun a -> a.AttributeType.FullName = "Aardvark.Base.Incremental.TreatAsValueAttribute")
 
-    let rec findDomainTypes (e : FSharpImplementationFileDeclaration) =
-        seq {
-            match e with
-                | Entity(e, children) ->
-                    if e.Attributes |> Seq.exists FSharpAttribute.isDomainAttribute then
-                        yield e
+    type EntityTree =
+        | Namespace of Option<string> * list<EntityTree>
+        | Module of string * bool * list<EntityTree>
+        | Type of FSharpEntity
 
-                    for c in children do
-                        yield! findDomainTypes c
-                | _ ->
-                    ()
-        }
+
+    let rec buildEntityTree (e : FSharpImplementationFileDeclaration) : Option<EntityTree> =
+        match e with
+            | Entity(e, children) ->
+                if e.IsNamespace then
+                    let children = children |> List.choose buildEntityTree 
+                    
+                    match children with
+                        | [] -> None
+                        | [Namespace(Some c, children)] ->
+                            Namespace(Some (e.DisplayName + "." + c), children) |> Some
+                        | _ -> Namespace(Some e.DisplayName, children) |> Some
+
+                elif e.IsFSharpModule then
+                    let children = children |> List.choose buildEntityTree 
+                    match children with
+                        | [] -> None
+                        | _ -> 
+                            Module(e.DisplayName, e.HasFSharpModuleSuffix, children) |> Some
+
+                else
+                    if e.Attributes |> Seq.exists FSharpAttribute.isDomainAttribute then
+                        Type(e) |> Some
+                    else
+                        None
+            | _ ->
+                None
+//
+//    let rec findDomainTypes (e : FSharpImplementationFileDeclaration) =
+//        seq {
+//            match e with
+//                | Entity(e, children) ->
+//                    if e.Attributes |> Seq.exists FSharpAttribute.isDomainAttribute then
+//                        yield e
+//
+//                    for c in children do
+//                        yield! findDomainTypes c
+//                | _ ->
+//                    ()
+//        }
 
     [<AutoOpen>]
     module Patterns =
@@ -354,218 +387,252 @@ module Preprocessing =
     module Glasdas =
         type FSharpField with
             member x.CleanName = x.Name.ToLower()
-                
-                
-    let generateMutableModels (l : list<FSharpEntity>) =
+      
+    let generateMutableType (e : FSharpEntity) =
         codegen {
-            for e in l do
-                let immutableName = FSharpEntity.immutableName e
-                let mutableName = FSharpEntity.mutableName e
-                let targs = e.GenericParameters
-                if targs.Count > 0 then
-                    do! error "cannot compile generic domain type %s" e.DisplayName
+            let immutableName = FSharpEntity.immutableName e
+            let mutableName = FSharpEntity.mutableName e
+            let targs = e.GenericParameters
+            if targs.Count > 0 then
+                do! error "cannot compile generic domain type %s" e.DisplayName
 
-                do! line "namespace %s" (FSharpEntity.mutableNameSpace e)
-                do! line "open System"
-                do! line "open Aardvark.Base.Incremental"
-                do! line ""
 
-                if e.IsFSharpRecord then
-                    let annotatedFields =
-                        e.FSharpFields
-                            |> Seq.toList
-                            |> List.map (fun f ->
-                                let adapter = 
-                                    if FSharpField.treatAsValue f then
-                                        valueAdapter
-                                    else
-                                        generateAdapter f.FieldType
+            if e.IsFSharpRecord then
+                let annotatedFields =
+                    e.FSharpFields
+                        |> Seq.toList
+                        |> List.map (fun f ->
+                            let adapter = 
+                                if FSharpField.treatAsValue f then
+                                    valueAdapter
+                                else
+                                    generateAdapter f.FieldType
 
-                                let inputName = sprintf "__initial.%s" f.DisplayName
-                                let init = sprintf "let _%s = %s" f.DisplayName (adapter.aInit inputName)
+                            let inputName = sprintf "__initial.%s" f.DisplayName
+                            let init = sprintf "let _%s = %s" f.DisplayName (adapter.aInit inputName)
 
-                                let access =
-                                    match adapter.aType with
-                                        | Some t -> sprintf "_%s :> %s" f.DisplayName t
-                                        | None -> sprintf "_%s" f.DisplayName
+                            let access =
+                                match adapter.aType with
+                                    | Some t -> sprintf "_%s :> %s" f.DisplayName t
+                                    | None -> sprintf "_%s" f.DisplayName
 
-                                f.DisplayName, init, access
-                        )
+                            f.DisplayName, init, access
+                    )
                     
-                    do! line "[<StructuredFormatDisplay(\"{AsString}\")>]"
-                    let typeDef = scope "type %s private(__initial : %s) =" mutableName immutableName
-                    do! typeDef {
-                        do! line "let mutable __current = __initial"
+                do! line "[<StructuredFormatDisplay(\"{AsString}\")>]"
+                let typeDef = scope "type %s private(__initial : %s) =" mutableName immutableName
+                do! typeDef {
+                    do! line "let mutable __current = __initial"
 
-                        for (_, init, _) in annotatedFields do
-                            do! line "%s" init
+                    for (_, init, _) in annotatedFields do
+                        do! line "%s" init
                         
-                        do! line ""
+                    do! line ""
 
-                        for (fname, _, access) in annotatedFields do
-                            do! line "member x.%s = %s" fname access
+                    for (fname, _, access) in annotatedFields do
+                        do! line "member x.%s = %s" fname access
                     
-                        do! line ""
+                    do! line ""
 
-                        let apply = scope "member x.Update(__model : %s) =" immutableName
-                        do! apply {
-                            do! line "if not (Object.ReferenceEquals(__model, __current)) then"
-                            do! push
+                    let apply = scope "member x.Update(__model : %s) =" immutableName
+                    do! apply {
+                        do! line "if not (Object.ReferenceEquals(__model, __current)) then"
+                        do! push
 
-                            do! line "__current <- __model"
+                        do! line "__current <- __model"
                 
-                            for f in e.FSharpFields do
-                                let fName = f.DisplayName
-                                do! line "_%s.Update(__model.%s)" fName fName
-                            do! pop
-                        }
-                        do! line ""
-                        do! line "static member Create(initial) = %s(initial)" mutableName
-                        do! line ""
-                        do! line "override x.ToString() = __current.ToString()"
-                        do! line "member private x.AsString = sprintf \"%%A\" __current"
-
+                        for f in e.FSharpFields do
+                            let fName = f.DisplayName
+                            do! line "_%s.Update(__model.%s)" fName fName
+                        do! pop
                     }
+                    do! line ""
+                    do! line "static member Create(initial) = %s(initial)" mutableName
+                    do! line ""
+                    do! line "override x.ToString() = __current.ToString()"
+                    do! line "member private x.AsString = sprintf \"%%A\" __current"
 
-                elif e.IsFSharpUnion then   
+                }
+
+            elif e.IsFSharpUnion then   
                     
-                    let cases = e.UnionCases
+                let cases = e.UnionCases
                     
                     
-                    do! line "[<AbstractClass; System.Runtime.CompilerServices.Extension; StructuredFormatDisplay(\"{AsString}\")>]"
-                    let baseType = scope "type %s() =" mutableName
-                    do! baseType {
-                        do! line "abstract member TryUpdate : %s -> bool" immutableName
-                        do! line "abstract member AsString : string"
-                        do! line ""
+                do! line "[<AbstractClass; System.Runtime.CompilerServices.Extension; StructuredFormatDisplay(\"{AsString}\")>]"
+                let baseType = scope "type %s() =" mutableName
+                do! baseType {
+                    do! line "abstract member TryUpdate : %s -> bool" immutableName
+                    do! line "abstract member AsString : string"
+                    do! line ""
                         
 
 
-                        let createValue = scope "static member private CreateValue(__model : %s) = " immutableName
-                        do! createValue {
-                            do! line "match __model with" 
-                            do! push
+                    let createValue = scope "static member private CreateValue(__model : %s) = " immutableName
+                    do! createValue {
+                        do! line "match __model with" 
+                        do! push
 
                             
-                            for c in cases do
-                                let fields = c.UnionCaseFields |> Seq.map (fun f -> f.CleanName) |> Seq.toList
-                                let rhs = ("__model" :: fields) |> String.concat ", "
+                        for c in cases do
+                            let fields = c.UnionCaseFields |> Seq.map (fun f -> f.CleanName) |> Seq.toList
+                            let rhs = ("__model" :: fields) |> String.concat ", "
 
-                                let lhs = 
-                                    let lhs = fields |> String.concat ", "
-                                    if lhs = "" then ""
-                                    else lhs |> sprintf "(%s)"
+                            let lhs = 
+                                let lhs = fields |> String.concat ", "
+                                if lhs = "" then ""
+                                else lhs |> sprintf "(%s)"
                                 
-                                do! line "| %s%s -> M%s(%s) :> %s" c.Name lhs c.Name rhs mutableName
+                            do! line "| %s%s -> M%s(%s) :> %s" c.Name lhs c.Name rhs mutableName
 
+                        do! pop
+                    }
+
+                    do! line ""
+                    do! line "static member Create(v : %s) =" immutableName
+                    do! line "    ResetMod(%s.CreateValue v) :> IMod<_>" mutableName
+                    do! line ""
+
+                    do! line "[<System.Runtime.CompilerServices.Extension>]"
+                    do! line "static member Update(m : IMod<%s>, v : %s) =" mutableName immutableName
+                    do! push
+                    do! line "let m = unbox<ResetMod<%s>> m" mutableName
+                    do! line "if not (m.GetValue().TryUpdate v) then"
+                    do! line "    m.Update(%s.CreateValue v)" mutableName
+                    do! pop
+
+                }
+                do! line ""
+                do! line ""
+
+                for c in cases do
+                    let fields = c.UnionCaseFields |> Seq.map (fun f -> f.CleanName, f) |> Seq.toList
+                    let args = fields |> Seq.map (fun (name,f) -> name, FSharpType.immutableName f.FieldType) |> Seq.toList
+
+                    let annotatedFields = 
+                        fields |> List.map (fun (_,f) -> 
+                            f, generateAdapter f.FieldType
+                        )
+
+                    let argDef = ("__initial : " + immutableName) :: (args |> List.map (fun (n,t) -> sprintf "%s : %s" n t)) |> String.concat ", "
+                    let mName = "M" + c.Name
+                    let caseType = scope "and private %s(%s) =" mName argDef
+                    do! caseType {
+                        do! line "inherit %s()" mutableName
+                        do! line ""
+                        do! line "let mutable __current = __initial"
+                        for (f, adapter) in annotatedFields do
+                            do! line "let _%s = %s" f.CleanName (adapter.aInit f.CleanName)
+                                
+                                
+                        for (f, adapter) in annotatedFields do
+                            match adapter.aType with
+                                | Some t -> do! line "member x.%s = _%s :> %s" f.CleanName f.CleanName t
+                                | None -> do! line "member x.%s = _%s" f.CleanName f.CleanName 
+                                        
+                        do! line ""
+                        do! line "override x.ToString() = __current.ToString()"
+                        do! line "override x.AsString = sprintf \"%%A\" __current"
+                        do! line ""
+
+                        let tryUpdate = scope "override x.TryUpdate(__model : %s) = " immutableName
+                        do! tryUpdate {
+                            do! line "if System.Object.ReferenceEquals(__current, __model) then"
+                            do! line "    true"
+                            do! line "else"
+                            do! push
+                            do! line "match __model with"
+                            do! push
+
+                            let args = args |> List.map fst |> String.concat ","
+                            let args =
+                                if args = "" then ""
+                                else sprintf "(%s)" args
+
+                            do! line "| %s%s -> " c.Name args
+                            do! push
+                            do! line "__current <- __model"
+                            for (f,a) in annotatedFields do
+                                do! line "_%s.Update(%s)" f.CleanName f.CleanName
+                            do! line "true"
+                            do! pop
+
+                            do! line "| _ -> false"
+
+
+                            do! pop
                             do! pop
                         }
 
-                        do! line ""
-                        do! line "static member Create(v : %s) =" immutableName
-                        do! line "    ResetMod(%s.CreateValue v) :> IMod<_>" mutableName
-                        do! line ""
-
-                        do! line "[<System.Runtime.CompilerServices.Extension>]"
-                        do! line "static member Update(m : IMod<%s>, v : %s) =" mutableName immutableName
-                        do! push
-                        do! line "let m = unbox<ResetMod<%s>> m" mutableName
-                        do! line "if not (m.GetValue().TryUpdate v) then"
-                        do! line "    m.Update(%s.CreateValue v)" mutableName
-                        do! pop
 
                     }
-                    do! line ""
-                    do! line ""
 
+                do! line "[<AutoOpen>]"
+                let patterns = scope "module %sPatterns =" mutableName
+                do! patterns {
+                    let allNames = cases |> Seq.map (fun c -> "M" + c.Name) |> String.concat "|" 
+                    do! line "let (|%s|) (m : %s) =" allNames mutableName
+                    do! push
+                    do! line "match m with"
+                        
                     for c in cases do
                         let fields = c.UnionCaseFields |> Seq.map (fun f -> f.CleanName, f) |> Seq.toList
-                        let args = fields |> Seq.map (fun (name,f) -> name, FSharpType.immutableName f.FieldType) |> Seq.toList
+                        let args = fields |> Seq.map (fun (name,_) -> sprintf "v.%s" name) |> String.concat ","
+                        if args = "" then
+                            do! line "| :? M%s as v -> M%s" c.Name c.Name
+                        else
+                            do! line "| :? M%s as v -> M%s(%s)" c.Name c.Name args
 
-                        let annotatedFields = 
-                            fields |> List.map (fun (_,f) -> 
-                                f, generateAdapter f.FieldType
-                            )
+                    do! line "| _ -> failwith \"impossible\""
 
-                        let argDef = ("__initial : " + immutableName) :: (args |> List.map (fun (n,t) -> sprintf "%s : %s" n t)) |> String.concat ", "
-                        let mName = "M" + c.Name
-                        let caseType = scope "and private %s(%s) =" mName argDef
-                        do! caseType {
-                            do! line "inherit %s()" mutableName
+                    do! pop
+                    ()
+                }
+
+
+            else
+                do! error "[Domain] bad domain type: %A" e
+
+        }
+    
+    let rec generateMutableModel (l : EntityTree) =
+        codegen {
+            match l with
+                | Namespace(ns, children) ->
+                    match ns with
+                        | Some ns -> 
+                            do! line "namespace %s.Mutable" ns
                             do! line ""
-                            do! line "let mutable __current = __initial"
-                            for (f, adapter) in annotatedFields do
-                                do! line "let _%s = %s" f.CleanName (adapter.aInit f.CleanName)
-                                
-                                
-                            for (f, adapter) in annotatedFields do
-                                match adapter.aType with
-                                    | Some t -> do! line "member x.%s = _%s :> %s" f.CleanName f.CleanName t
-                                    | None -> do! line "member x.%s = _%s" f.CleanName f.CleanName 
-                                        
-                            do! line ""
-                            do! line "override x.ToString() = __current.ToString()"
-                            do! line "override x.AsString = sprintf \"%%A\" __current"
-                            do! line ""
+                            do! line "open System"
+                            do! line "open Aardvark.Base.Incremental"
+                            do! line "open %s" ns
+                        | None ->
+                            do! line "namespace Mutable"
+                            do! line "open System"
+                            do! line "open Aardvark.Base.Incremental"
+                            
+                    do! line ""
+                    for c in children do
+                        do! generateMutableModel c
 
-                            let tryUpdate = scope "override x.TryUpdate(__model : %s) = " immutableName
-                            do! tryUpdate {
-                                do! line "if System.Object.ReferenceEquals(__current, __model) then"
-                                do! line "    true"
-                                do! line "else"
-                                do! push
-                                do! line "match __model with"
-                                do! push
+                
+                | Module(name, suffix, children) ->
+                    if suffix then
+                        do! line "[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]"
+                    do! line "module %s" name
+                    do! push
+                    for c in children do
+                        do! generateMutableModel c
+                    do! pop
+                    
+                | Type(e) ->
+                    do! generateMutableType e
+        }
 
-                                let args = args |> List.map fst |> String.concat ","
-                                let args =
-                                    if args = "" then ""
-                                    else sprintf "(%s)" args
-
-                                do! line "| %s%s -> " c.Name args
-                                do! push
-                                do! line "__current <- __model"
-                                for (f,a) in annotatedFields do
-                                    do! line "_%s.Update(%s)" f.CleanName f.CleanName
-                                do! line "true"
-                                do! pop
-
-                                do! line "| _ -> false"
-
-
-                                do! pop
-                                do! pop
-                            }
-
-
-                        }
-
-                    do! line "[<AutoOpen>]"
-                    let patterns = scope "module %sPatterns =" mutableName
-                    do! patterns {
-                        let allNames = cases |> Seq.map (fun c -> "M" + c.Name) |> String.concat "|" 
-                        do! line "let (|%s|) (m : %s) =" allNames mutableName
-                        do! push
-                        do! line "match m with"
-                        
-                        for c in cases do
-                            let fields = c.UnionCaseFields |> Seq.map (fun f -> f.CleanName, f) |> Seq.toList
-                            let args = fields |> Seq.map (fun (name,_) -> sprintf "v.%s" name) |> String.concat ","
-                            if args = "" then
-                                do! line "| :? M%s as v -> M%s" c.Name c.Name
-                            else
-                                do! line "| :? M%s as v -> M%s(%s)" c.Name c.Name args
-
-                        do! line "| _ -> failwith \"impossible\""
-
-                        do! pop
-                        ()
-                    }
-
-
-                else
-                    do! error "[Domain] bad domain type: %A" e
-
+    let generateMutableModels (l : list<EntityTree>) =
+        codegen {
+            for e in l do
+               do! generateMutableModel e
         }
 
     let runWithOptions (options : FSharpProjectOptions) =
@@ -578,7 +645,7 @@ module Preprocessing =
             else
                 let domainTypes = 
                     res.AssemblyContents.ImplementationFiles |> List.choose (fun f ->
-                        let domainTypes = f.Declarations |> Seq.collect findDomainTypes |> Seq.toList
+                        let domainTypes = f.Declarations |> Seq.choose buildEntityTree |> Seq.toList
                         match domainTypes with
                             | [] -> None
                             | _ -> Some (f.FileName, domainTypes)

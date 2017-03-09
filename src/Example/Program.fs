@@ -3,6 +3,7 @@
 open Aardvark.Base
 open Aardvark.Base.Incremental
 open DomainModel
+open DomainModel.Mutable
 open Aardvark.Compiler.DomainTypes
 
 
