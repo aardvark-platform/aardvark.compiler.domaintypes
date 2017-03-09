@@ -132,120 +132,6 @@ module CodeGenerator =
                 | Success(s,_) -> s.result.ToString()
                 | Error e -> failwith e
 
-
-module MSBuild =
-    open Microsoft.Build.Framework
-    open Microsoft.Build.Utilities
-    open Microsoft.FSharp.Compiler
-    open Microsoft.FSharp.Compiler.SourceCodeServices
-
-    let mkAbsolute dir v = 
-        if Path.IsPathRooted v then v
-        else Path.Combine(dir, v)
-
-
-    type internal HostCompile() =
-        member th.Compile(_:obj, _:obj, _:obj) = 0
-        interface ITaskHost
-
-    let vs =
-        let programFiles =
-            let getEnv v =
-                let result = System.Environment.GetEnvironmentVariable(v)
-                match result with
-                | null -> None
-                | _ -> Some result
-
-            match List.tryPick getEnv [ "ProgramFiles(x86)";  "ProgramFiles" ] with
-            | Some r -> r
-            | None -> "C:\\Program Files (x86)"
-
-        let vsVersions = ["14.0"; "12.0"]
-        let msbuildBin v = IO.Path.Combine(programFiles, "MSBuild", v, "Bin", "MSBuild.exe")
-        List.tryFind (fun v -> IO.File.Exists(msbuildBin v)) vsVersions
-
-    let CrackProjectUsingNewBuildAPI(fsprojFile) =
-        let fsprojFullPath = try Path.GetFullPath(fsprojFile) with _ -> fsprojFile
-        let fsprojAbsDirectory = Path.GetDirectoryName fsprojFullPath
-
-        use _pwd = 
-            let dir = Directory.GetCurrentDirectory()
-            Directory.SetCurrentDirectory(fsprojAbsDirectory)
-            { new System.IDisposable with
-                member x.Dispose() = Directory.SetCurrentDirectory(dir) 
-            }
-        use engine = new Microsoft.Build.Evaluation.ProjectCollection()
-        let host = new HostCompile()
-        engine.HostServices.RegisterHostObject(fsprojFullPath, "CoreCompile", "Fsc", host)
-
-
-        let projectInstanceFromFullPath (fsprojFullPath: string) =
-            use file = new FileStream(fsprojFullPath, FileMode.Open, FileAccess.Read, FileShare.Read)
-            use stream = new StreamReader(file)
-            use xmlReader = System.Xml.XmlReader.Create(stream)
-
-            let project = engine.LoadProject(xmlReader, FullPath=fsprojFullPath)
-              
-            project.SetGlobalProperty("BuildingInsideVisualStudio", "true") |> ignore
-            
-            match vs with
-                | Some version -> project.SetGlobalProperty("VisualStudioVersion", version) |> ignore
-                | None -> ()
-            project.SetGlobalProperty("ShouldUnsetParentConfigurationAndPlatform", "false") |> ignore
-
-            project.CreateProjectInstance()
-
-        let project = projectInstanceFromFullPath fsprojFullPath
-        let directory = project.Directory
-
-        let getprop (p: Microsoft.Build.Execution.ProjectInstance) s =
-            let v = p.GetPropertyValue s
-            if String.IsNullOrWhiteSpace v then None
-            else Some v
-
-        let outFileOpt = getprop project "TargetPath"
-
-        let log = []
-        project.Build([| "Build" |], log) |> ignore
-
-        let getItems s = [ for f in project.GetItems(s) -> mkAbsolute directory f.EvaluatedInclude ]
-
-        let projectReferences =
-            [ for cp in project.GetItems("ProjectReference") do
-                    yield cp.GetMetadataValue("FullPath")
-            ]
-
-        let references =
-            [ for i in project.GetItems("ReferencePath") do
-                yield i.EvaluatedInclude
-                for i in project.GetItems("ChildProjectReferences") do
-                    yield i.EvaluatedInclude 
-            ]
-
-        let files = getItems "Compile"
-
-        let options = 
-          [   yield "--simpleresolution"
-              yield "--noframework"
-              match outFileOpt with
-              | None -> ()
-              | Some outFile -> yield "--out:" + outFile
-              yield "--fullpaths"
-              yield "--flaterrors"
-              yield "--platform:anycpu"
-              yield "--target:library"
-
-              for r in references do
-                  yield "-r:" + r 
-              yield! files 
-            ]
-        options
-//
-//        checker.
-//
-//        outFileOpt, directory, getItems, references, projectReferences, getprop project, project.FullPath
-
-
 module Preprocessing =
     open CodeGenerator
     open Microsoft.FSharp.Compiler
@@ -256,7 +142,7 @@ module Preprocessing =
 
     let domainAttName = "Aardvark.Base.Incremental.DomainTypeAttribute"
 
-    let CrackProjectOptions (fsprojFile : string) (references : list<string>) (files : list<string>) =
+    let getProjectOptions (fsprojFile : string) (references : list<string>) (files : list<string>) =
         let args =
             [|
                 yield "--simpleresolution"
@@ -289,13 +175,23 @@ module Preprocessing =
                 "M" + e.TypeDefinition.DisplayName
             else
                 failwithf "[Domain] no definition for %A" e 
+        
+        let private rx = System.Text.RegularExpressions.Regex @"`[0-9]+"
 
-        let immutableName (e : FSharpType) =
+        let rec immutableName (e : FSharpType) =
             if e.HasTypeDefinition  then
                 let def = e.TypeDefinition
-                match def.TryFullName with
-                    | Some name -> name
-                    | None -> def.DisplayName
+                let targs = e.GenericArguments |> Seq.toList
+                match targs with
+                    | [] -> 
+                        match def.TryFullName with
+                            | Some name -> name
+                            | None -> def.DisplayName
+                    | _ ->
+                        let targs = targs |> List.map immutableName |> String.concat ", " |> sprintf "<%s>"
+                        match def.TryFullName with
+                            | Some name -> rx.Replace(name, targs) 
+                            | None -> def.DisplayName + targs
             else
                 failwithf "[Domain] no definition for %A" e 
 
@@ -310,6 +206,10 @@ module Preprocessing =
             let name = e.FullName
             let idx = name.LastIndexOf '.'
             name.Substring(0, idx)
+
+    module FSharpField =
+        let treatAsValue (f : FSharpField) =
+            f.PropertyAttributes |> Seq.exists (fun a -> a.AttributeType.FullName = "Aardvark.Base.Incremental.TreatAsValueAttribute")
 
     let rec findDomainTypes (e : FSharpImplementationFileDeclaration) =
         seq {
@@ -350,6 +250,11 @@ module Preprocessing =
             match t with
                 | Generic("plist", [a]) -> Some a
                 | _ -> None
+                
+        let (|Option|_|) (t : FSharpType) =
+            match t with
+                | Generic("Option", [a]) -> Some a
+                | _ -> None
 
         let tryGetUniqueField (t : FSharpType) =
             if t.HasTypeDefinition then
@@ -387,6 +292,13 @@ module Preprocessing =
             aInit : string -> string
         }
 
+    let valueAdapter =
+        {
+            aType = Some "IMod<_>"
+            aInit = sprintf "ResetMod(%s)"
+        }
+             
+
     let generateAdapter (t : FSharpType) =
         match t with
             | PList (DomainType t) ->
@@ -419,6 +331,14 @@ module Preprocessing =
                     aType = Some "aset<_>"
                     aInit = fun fName -> sprintf "ResetSet(%s)" fName
                 }
+
+            
+            | Option (DomainType t) ->
+                let tName = FSharpType.mutableName t
+                {
+                    aType = Some "IMod<_>"
+                    aInit = fun fName -> sprintf "ResetMapOption(%s, %s.Create, fun (m,i) -> m.Update(i))" fName tName
+                }
                        
             | DomainType t ->
                 let mName = FSharpType.mutableName t
@@ -427,11 +347,15 @@ module Preprocessing =
                     aInit = sprintf "%s.Create(%s)" mName
                 }
 
-            | t ->
-                {
-                    aType = Some "IMod<_>"
-                    aInit = sprintf "ResetMod(%s)"
-                }
+
+            | t -> valueAdapter
+             
+
+    [<AutoOpen>]
+    module Glasdas =
+        type FSharpField with
+            member x.CleanName = x.Name.ToLower()
+                
                 
     let generateMutableModels (l : list<FSharpEntity>) =
         codegen {
@@ -452,7 +376,12 @@ module Preprocessing =
                         e.FSharpFields
                             |> Seq.toList
                             |> List.map (fun f ->
-                                let adapter = generateAdapter f.FieldType
+                                let adapter = 
+                                    if FSharpField.treatAsValue f then
+                                        valueAdapter
+                                    else
+                                        generateAdapter f.FieldType
+
                                 let inputName = sprintf "__initial.%s" f.DisplayName
                                 let init = sprintf "let _%s = %s" f.DisplayName (adapter.aInit inputName)
 
@@ -499,29 +428,144 @@ module Preprocessing =
 
                     }
 
-                elif e.IsFSharpUnion then
+                elif e.IsFSharpUnion then   
+                    
                     let cases = e.UnionCases
+                    
+                    
+                    do! line "[<AbstractClass; System.Runtime.CompilerServices.Extension; StructuredFormatDisplay(\"{AsString}\")>]"
+                    let baseType = scope "type %s() =" mutableName
+                    do! baseType {
+                        do! line "abstract member TryUpdate : %s -> bool" immutableName
+                        do! line "abstract member AsString : string"
+                        do! line ""
+                        
 
-//                    do! line "type %s =" mutableName
-//                    do! push
-//                    for c in cases do
-//                        let caseName = "M" + c.Name
-//                        let args = 
-//                            c.UnionCaseFields
-//                                |> Seq.toList
-//                                |> List.map (fun f ->
-//                                    match f.FieldType with
-//                                        | DomainType t -> f.Name, FSharpType.mutableName t
-//                                        | _ -> 
-//                                )
-//                        ()
-//
-//                    do! pop
-                    do! error "cannot compile union types atm."
-                    ()
+
+                        let createValue = scope "static member private CreateValue(__model : %s) = " immutableName
+                        do! createValue {
+                            do! line "match __model with" 
+                            do! push
+
+                            
+                            for c in cases do
+                                let fields = c.UnionCaseFields |> Seq.map (fun f -> f.CleanName) |> Seq.toList
+                                let rhs = ("__model" :: fields) |> String.concat ", "
+
+                                let lhs = 
+                                    let lhs = fields |> String.concat ", "
+                                    if lhs = "" then ""
+                                    else lhs |> sprintf "(%s)"
+                                
+                                do! line "| %s%s -> M%s(%s) :> %s" c.Name lhs c.Name rhs mutableName
+
+                            do! pop
+                        }
+
+                        do! line ""
+                        do! line "static member Create(v : %s) =" immutableName
+                        do! line "    ResetMod(%s.CreateValue v) :> IMod<_>" mutableName
+                        do! line ""
+
+                        do! line "[<System.Runtime.CompilerServices.Extension>]"
+                        do! line "static member Update(m : IMod<%s>, v : %s) =" mutableName immutableName
+                        do! push
+                        do! line "let m = unbox<ResetMod<%s>> m" mutableName
+                        do! line "if not (m.GetValue().TryUpdate v) then"
+                        do! line "    m.Update(%s.CreateValue v)" mutableName
+                        do! pop
+
+                    }
+                    do! line ""
+                    do! line ""
+
+                    for c in cases do
+                        let fields = c.UnionCaseFields |> Seq.map (fun f -> f.CleanName, f) |> Seq.toList
+                        let args = fields |> Seq.map (fun (name,f) -> name, FSharpType.immutableName f.FieldType) |> Seq.toList
+
+                        let annotatedFields = 
+                            fields |> List.map (fun (_,f) -> 
+                                f, generateAdapter f.FieldType
+                            )
+
+                        let argDef = ("__initial : " + immutableName) :: (args |> List.map (fun (n,t) -> sprintf "%s : %s" n t)) |> String.concat ", "
+                        let mName = "M" + c.Name
+                        let caseType = scope "and private %s(%s) =" mName argDef
+                        do! caseType {
+                            do! line "inherit %s()" mutableName
+                            do! line ""
+                            do! line "let mutable __current = __initial"
+                            for (f, adapter) in annotatedFields do
+                                do! line "let _%s = %s" f.CleanName (adapter.aInit f.CleanName)
+                                
+                                
+                            for (f, adapter) in annotatedFields do
+                                match adapter.aType with
+                                    | Some t -> do! line "member x.%s = _%s :> %s" f.CleanName f.CleanName t
+                                    | None -> do! line "member x.%s = _%s" f.CleanName f.CleanName 
+                                        
+                            do! line ""
+                            do! line "override x.ToString() = __current.ToString()"
+                            do! line "override x.AsString = sprintf \"%%A\" __current"
+                            do! line ""
+
+                            let tryUpdate = scope "override x.TryUpdate(__model : %s) = " immutableName
+                            do! tryUpdate {
+                                do! line "if System.Object.ReferenceEquals(__current, __model) then"
+                                do! line "    true"
+                                do! line "else"
+                                do! push
+                                do! line "match __model with"
+                                do! push
+
+                                let args = args |> List.map fst |> String.concat ","
+                                let args =
+                                    if args = "" then ""
+                                    else sprintf "(%s)" args
+
+                                do! line "| %s%s -> " c.Name args
+                                do! push
+                                do! line "__current <- __model"
+                                for (f,a) in annotatedFields do
+                                    do! line "_%s.Update(%s)" f.CleanName f.CleanName
+                                do! line "true"
+                                do! pop
+
+                                do! line "| _ -> false"
+
+
+                                do! pop
+                                do! pop
+                            }
+
+
+                        }
+
+                    do! line "[<AutoOpen>]"
+                    let patterns = scope "module %sPatterns =" mutableName
+                    do! patterns {
+                        let allNames = cases |> Seq.map (fun c -> "M" + c.Name) |> String.concat "|" 
+                        do! line "let (|%s|) (m : %s) =" allNames mutableName
+                        do! push
+                        do! line "match m with"
+                        
+                        for c in cases do
+                            let fields = c.UnionCaseFields |> Seq.map (fun f -> f.CleanName, f) |> Seq.toList
+                            let args = fields |> Seq.map (fun (name,_) -> sprintf "v.%s" name) |> String.concat ","
+                            if args = "" then
+                                do! line "| :? M%s as v -> M%s" c.Name c.Name
+                            else
+                                do! line "| :? M%s as v -> M%s(%s)" c.Name c.Name args
+
+                        do! line "| _ -> failwith \"impossible\""
+
+                        do! pop
+                        ()
+                    }
+
 
                 else
-                    failwithf "[Domain] bad domain type: %A" e
+                    do! error "[Domain] bad domain type: %A" e
 
         }
 
@@ -538,7 +582,7 @@ module Preprocessing =
             let references = Set.add fsCorePath references
 
             sw.Stop()
-            let options = CrackProjectOptions fsProjPath (Set.toList references) files
+            let options = getProjectOptions fsProjPath (Set.toList references) files
             printfn "project: %.1fs" sw.Elapsed.TotalSeconds
             sw.Restart()
 

@@ -22,13 +22,15 @@ let test () =
 
     let state = 
         { 
-            primary = o
+            past = None
+            primary = Some o
             viewTrafo = Trafo3d.Identity
             objects = HSet.empty
             test = PList.empty
         }
 
     let mstate = MState.Create state
+
 
     mstate.objects |> ASet.unsafeRegisterCallbackKeepDisposable (fun deltas ->
         printfn "delta: %A" deltas
@@ -67,94 +69,18 @@ let test () =
 
 open System.IO
 
-
-
-type MyUnion =
-    | A of int * hset<int>
-    | B of string
-
-// generated
-[<AbstractClass; System.Runtime.CompilerServices.Extension; StructuredFormatDisplay("{AsString}")>]
-type MMyUnion() =
-    
-    abstract member TryUpdate : MyUnion -> bool
-    abstract member AsString : string
-        
-    static member private CreateValue(v : MyUnion) =
-        match v with
-            | A(item1, item2) -> MA(v, item1, item2) :> MMyUnion
-            | B(item1) -> MB(v, item1) :> MMyUnion
-
-    static member Create(v : MyUnion) =
-        ResetMod(MMyUnion.CreateValue v) :> IMod<_>
-
-    [<System.Runtime.CompilerServices.Extension>]
-    static member Update(m : IMod<MMyUnion>, v : MyUnion) =
-        let m = unbox<ResetMod<MMyUnion>> m
-        if not (m.GetValue().TryUpdate v) then
-            m.Update(MMyUnion.CreateValue v)
-
-and private MA(_initial : MyUnion, item1 : int, item2 : hset<int>) =
-    inherit MMyUnion()
-
-    let mutable _current = _initial
-    let _item1 = ResetMod(item1)
-    let _item2 = ResetSet(item2)
-
-    member x.Item1 = _item1 :> IMod<_>
-    member x.Item2 = _item2 :> aset<_>
-
-    
-    override x.ToString() = _current.ToString()
-    override x.AsString = sprintf "%A" _current
-    override x.TryUpdate(_model : MyUnion) =
-        if System.Object.ReferenceEquals(_current, _model) then
-            true
-        else
-            match _model with
-                | A(item1, item2) ->
-                    _current <- _model
-                    _item1.Update(item1)
-                    _item2.Update(item2)
-                    true
-                | _ ->
-                    false
-
-and private MB(_initial : MyUnion, item1 : string) =
-    inherit MMyUnion()
-    
-    let mutable _current = _initial
-    let _item1 = ResetMod(item1)
-
-    member x.Item1 = _item1 :> IMod<_>
-
-    override x.ToString() = _current.ToString()
-    override x.AsString = sprintf "%A" _current
-    override x.TryUpdate(_model : MyUnion) =
-        if System.Object.ReferenceEquals(_current, _model) then
-            true
-        else
-            match _model with
-                | B(item1) ->
-                    _current <- _model
-                    _item1.Update(item1)
-                    true
-                | _ ->
-                    false          
-
-[<AutoOpen>]
-module MMyUnionPatterns =
-    let (|MA|MB|) (m : MMyUnion) =
-        match m with
-            | :? MA as a -> MA(a.Item1, a.Item2)
-            | :? MB as b -> MB(b.Item1)
-            | _ -> failwith "impossible"
-
-// end
-
 let testUnion() =
     let u = A(1,HSet.empty)
     let sepp = MMyUnion.Create u
+
+    let test =
+        adaptive {
+            let! sepp = sepp
+            match sepp with
+                | MA (x,y) -> return 2
+                | MB str -> return 54
+                | MC -> return 2
+        }
 
     sepp |> Mod.unsafeRegisterCallbackKeepDisposable (fun c -> printfn "case changed: %A" c) |> ignore
 
@@ -165,16 +91,20 @@ let testUnion() =
     printfn "change to b"
     let u = B "asdsad"
     transact (fun () -> sepp.Update u)
+
+    printfn "change to c"
+    let u = C
+    transact (fun () -> sepp.Update u)
     
     System.Environment.Exit 0
 
 [<EntryPoint>]
 let main argv =
     //test()
-    testUnion()
+    //testUnion()
 
 
-    let fsProjPath = @"E:\Development\aardvark-compiler-domaintypes\src\Example\Example.fsproj"
+    let fsProjPath = @"C:\Users\Schorsch\Development\aardvark-compiler-domaintypes\src\Example\Example.fsproj"
 
     let files =
         [
