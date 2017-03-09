@@ -41,6 +41,8 @@
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="Microsoft.Build" />
+    <Reference Include="Microsoft.Build.Engine" />
     <Reference Include="Microsoft.Build.Framework" />
     <Reference Include="Microsoft.Build.Utilities.v4.0" />
     <Reference Include="mscorlib" />
@@ -50,12 +52,14 @@
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Numerics" />
+    <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Tests.fs" />
     <Compile Include="DomainModel.fs">
       <DomainTypes>True</DomainTypes>
     </Compile>
+    <Compile Include="DomainModel.g.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

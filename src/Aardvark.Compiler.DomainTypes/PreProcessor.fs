@@ -132,6 +132,120 @@ module CodeGenerator =
                 | Success(s,_) -> s.result.ToString()
                 | Error e -> failwith e
 
+
+module MSBuild =
+    open Microsoft.Build.Framework
+    open Microsoft.Build.Utilities
+    open Microsoft.FSharp.Compiler
+    open Microsoft.FSharp.Compiler.SourceCodeServices
+
+    let mkAbsolute dir v = 
+        if Path.IsPathRooted v then v
+        else Path.Combine(dir, v)
+
+
+    type internal HostCompile() =
+        member th.Compile(_:obj, _:obj, _:obj) = 0
+        interface ITaskHost
+
+    let vs =
+        let programFiles =
+            let getEnv v =
+                let result = System.Environment.GetEnvironmentVariable(v)
+                match result with
+                | null -> None
+                | _ -> Some result
+
+            match List.tryPick getEnv [ "ProgramFiles(x86)";  "ProgramFiles" ] with
+            | Some r -> r
+            | None -> "C:\\Program Files (x86)"
+
+        let vsVersions = ["14.0"; "12.0"]
+        let msbuildBin v = IO.Path.Combine(programFiles, "MSBuild", v, "Bin", "MSBuild.exe")
+        List.tryFind (fun v -> IO.File.Exists(msbuildBin v)) vsVersions
+
+    let CrackProjectUsingNewBuildAPI(fsprojFile) =
+        let fsprojFullPath = try Path.GetFullPath(fsprojFile) with _ -> fsprojFile
+        let fsprojAbsDirectory = Path.GetDirectoryName fsprojFullPath
+
+        use _pwd = 
+            let dir = Directory.GetCurrentDirectory()
+            Directory.SetCurrentDirectory(fsprojAbsDirectory)
+            { new System.IDisposable with
+                member x.Dispose() = Directory.SetCurrentDirectory(dir) 
+            }
+        use engine = new Microsoft.Build.Evaluation.ProjectCollection()
+        let host = new HostCompile()
+        engine.HostServices.RegisterHostObject(fsprojFullPath, "CoreCompile", "Fsc", host)
+
+
+        let projectInstanceFromFullPath (fsprojFullPath: string) =
+            use file = new FileStream(fsprojFullPath, FileMode.Open, FileAccess.Read, FileShare.Read)
+            use stream = new StreamReader(file)
+            use xmlReader = System.Xml.XmlReader.Create(stream)
+
+            let project = engine.LoadProject(xmlReader, FullPath=fsprojFullPath)
+              
+            project.SetGlobalProperty("BuildingInsideVisualStudio", "true") |> ignore
+            
+            match vs with
+                | Some version -> project.SetGlobalProperty("VisualStudioVersion", version) |> ignore
+                | None -> ()
+            project.SetGlobalProperty("ShouldUnsetParentConfigurationAndPlatform", "false") |> ignore
+
+            project.CreateProjectInstance()
+
+        let project = projectInstanceFromFullPath fsprojFullPath
+        let directory = project.Directory
+
+        let getprop (p: Microsoft.Build.Execution.ProjectInstance) s =
+            let v = p.GetPropertyValue s
+            if String.IsNullOrWhiteSpace v then None
+            else Some v
+
+        let outFileOpt = getprop project "TargetPath"
+
+        let log = []
+        project.Build([| "Build" |], log) |> ignore
+
+        let getItems s = [ for f in project.GetItems(s) -> mkAbsolute directory f.EvaluatedInclude ]
+
+        let projectReferences =
+            [ for cp in project.GetItems("ProjectReference") do
+                    yield cp.GetMetadataValue("FullPath")
+            ]
+
+        let references =
+            [ for i in project.GetItems("ReferencePath") do
+                yield i.EvaluatedInclude
+                for i in project.GetItems("ChildProjectReferences") do
+                    yield i.EvaluatedInclude 
+            ]
+
+        let files = getItems "Compile"
+
+        let options = 
+          [   yield "--simpleresolution"
+              yield "--noframework"
+              match outFileOpt with
+              | None -> ()
+              | Some outFile -> yield "--out:" + outFile
+              yield "--fullpaths"
+              yield "--flaterrors"
+              yield "--platform:anycpu"
+              yield "--target:library"
+
+              for r in references do
+                  yield "-r:" + r 
+              yield! files 
+            ]
+        options
+//
+//        checker.
+//
+//        outFileOpt, directory, getItems, references, projectReferences, getprop project, project.FullPath
+
+
 module Preprocessing =
     open CodeGenerator
     open Microsoft.FSharp.Compiler
@@ -141,6 +255,23 @@ module Preprocessing =
     let checker = FSharpChecker.Create(keepAssemblyContents = true)
 
     let domainAttName = "Aardvark.Base.Incremental.DomainTypeAttribute"
+
+    let CrackProjectOptions (fsprojFile : string) (references : list<string>) (files : list<string>) =
+        let args =
+            [|
+                yield "--simpleresolution"
+                yield "--noframework"
+                yield "--fullpaths"
+                yield "--flaterrors"
+                yield "--platform:anycpu"
+
+                for r in references do
+                    yield "-r:" + r 
+
+                yield! files 
+            |]
+
+        checker.GetProjectOptionsFromCommandLineArgs(fsprojFile, args)
 
     module FSharpAttribute =
         let isDomainAttribute (a : FSharpAttribute) =
@@ -390,15 +521,27 @@ module Preprocessing =
 
         }
 
-    let runInternal (fsProjPath : string) =
+    let runInternal (fsProjPath : string) (references : Set<string>) (files : list<string>) =
         async {
             let sw = System.Diagnostics.Stopwatch()
             sw.Start()
-            let options = ProjectCracker.GetProjectOptionsFromProjectFile(fsProjPath)
+
+            let dir = Path.GetDirectoryName fsProjPath
+            let outDir = Path.Combine(dir, "..", "..", "bin", "Debug")
+
+            let fsCorePath = @"C:\Program Files (x86)\Reference Assemblies\Microsoft\FSharp\.NETFramework\v4.0\4.4.0.0\FSharp.Core.dll"
+
+            let references = Set.add fsCorePath references
+
             sw.Stop()
-            printfn "%.1fs" sw.Elapsed.TotalSeconds
+            let options = CrackProjectOptions fsProjPath (Set.toList references) files
+            printfn "project: %.1fs" sw.Elapsed.TotalSeconds
+            sw.Restart()
 
             let! res = checker.ParseAndCheckProject(options)
+            sw.Stop()
+            printfn "check:   %.1fs" sw.Elapsed.TotalSeconds
+
             if res.HasCriticalErrors then
                 return None
 
@@ -416,8 +559,32 @@ module Preprocessing =
                 return Some code
         }
 
-    let run (fsProjPath : string) =
-        let test = runInternal fsProjPath |> Async.RunSynchronously
+    let run (fsProjPath : string) (references : Set<string>) (files : list<string>) =
+        let dir = Path.GetDirectoryName fsProjPath
+        let outDir = Path.Combine(dir, "..", "..", "bin", "Debug")
+      
+        let references = 
+            references |> Set.map (fun r ->
+                if Path.IsPathRooted r then 
+                    r
+                else 
+                    let rFile = Path.Combine(outDir, r)
+                    if File.Exists rFile then rFile
+                    else 
+                        let rFile = Path.Combine(dir, r)
+                        if File.Exists rFile then rFile
+                        else r
+            )
+            
+        let files = 
+            files |> List.map (fun r ->
+                if Path.IsPathRooted r then 
+                    r
+                else 
+                    Path.Combine(dir, r)
+            )
+
+        let test = runInternal fsProjPath references files |> Async.RunSynchronously
         test
 
 type Preprocess() =

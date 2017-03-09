@@ -5,56 +5,113 @@ open Aardvark.Base.Incremental
 open DomainModel
 open Aardvark.Compiler.DomainTypes
 
-[<EntryPoint>]
-let main argv = 
+
+let test () =
+    let mo =     
+        {
+            fileName    = "sadsad"
+            bounds      = Box3d.Unit
+        }
+
+    let o = 
+        { 
+            name = "obj"
+            trafo = Trafo3d.Identity
+            model = mo 
+        }
+
+    let state = 
+        { 
+            primary = o
+            viewTrafo = Trafo3d.Identity
+            objects = HSet.empty
+            test = [||] 
+        }
+
+    let mstate = MState.Create state
+
+    mstate.objects |> ASet.unsafeRegisterCallbackKeepDisposable (fun deltas ->
+        printfn "delta: %A" deltas
+
+        for d in deltas do
+            match d with
+                | Add(_,v) -> 
+                    v.trafo |> Mod.unsafeRegisterCallbackKeepDisposable (fun t -> 
+                        printfn "trafo(%s): %A" (Mod.force v.name) t.Forward.Det
+                    ) |> ignore
+                | _ -> 
+                    ()
+
+    ) |> ignore
+
+    printfn "add obj"
+    let state = { state with objects = HSet.add o state.objects }
+    transact (fun () -> mstate.Update state )
+
+    printfn "set trafo (scale 3.0)"
+    let n = { o with trafo = Trafo3d.Scale 3.0 }
+    let state = { state with objects = HSet.remove o (HSet.add n state.objects) }
+    transact (fun () -> mstate.Update state )
+    let o = n
     
-//    let mo =     
-//        {
-//            fileName    = "sadsad"
-//            bounds      = Box3d.Unit
-//        }
-//    let o = { name = "obj"; trafo = Trafo3d.Identity; model = mo }
-//
-//    let state = { primary = o; viewTrafo = Trafo3d.Identity; objects = HSet.empty; test = [||] }
-//
-//    let mstate = MState(state)
-//
-//    let name = mstate.primary.name
-//    
-//    let objects = mstate.objects
-//
-//    let a = mstate.viewTrafo.GetValue()
-//    printfn "%A" a.Forward
-//
-//    transact (fun () ->
-//        mstate.Update { state with viewTrafo = Trafo3d.Scale(2.0) }
-//    )
-//    let b = mstate.viewTrafo.GetValue()
-//    printfn "%A" b.Forward
-//    System.Environment.Exit 0
+    // TODO: remove missing here
+    printfn "change name and set trafo (scale 6.0)"
+    let n = { o with name = "hugo"; trafo = Trafo3d.Scale 6.0 }
+    let state = { state with objects = HSet.remove o (HSet.add n state.objects) }
+    transact (fun () -> mstate.Update state )
+    let o = n
 
 
-//    [<DomainType>]
-//    type Object =
-//        {
-//            name        : string
-//            trafo       : Trafo3d
-//            model       : Model
-//        }
-//
-//    [<DomainType>]
-//    type State =
-//        {
-//            primary     : Object
-//            viewTrafo   : Trafo3d
-//            objects     : hset<Object>
-//            test        : array<Object>
-//        }
+    System.Environment.Exit 0
+    ()
 
+open System.IO
 
-    let test = Preprocessing.run @"E:\Development\aardvark-compiler-domaintypes\src\Example\Example.fsproj" |> Option.get
+[<EntryPoint>]
+let main argv =
+    //test()
+        
+
+    let fsProjPath = @"E:\Development\aardvark-compiler-domaintypes\src\Example\Example.fsproj"
+
+    let files =
+        [
+            "Tests.fs"
+            "DomainModel.fs"
+            "Program.fs"
+        ]
+
+    let references =
+        Set.ofList [
+            "System.Drawing.dll"
+            "Aardvark.Compiler.DomainTypes.exe"
+            "Aardvark.Base.dll"
+            "Aardvark.Base.Essentials.dll"
+            "Aardvark.Base.TypeProviders.dll"
+            "Aardvark.Base.FSharp.dll"
+            "Aardvark.Base.Incremental.dll"
+            "DevILSharp.dll"
+
+            
+            "FSharp.Compiler.Service.MSBuild.v12.dll"
+            "FSharp.Compiler.Service.dll"
+            "FSharp.Compiler.Service.ProjectCracker.dll"
+            "System.Collections.Immutable.dll"
+            "System.Reactive.Core.dll"
+            "System.Reactive.Interfaces.dll"
+            "System.Reactive.Linq.dll"
+            "System.Reflection.Metadata.dll"
+        ]
+
+    let test = Preprocessing.run fsProjPath references files |> Option.get
 
     for (f,content) in Map.toSeq test do
-        printfn "%s:" f
-        printfn "%s" content
-    0 // return an integer exit code
+        let path = System.IO.Path.ChangeExtension(f, ".g.fs")
+        let old = File.readAllText path
+        if old <> content then
+            File.writeAllText path content
+            printfn "%s:" f
+            printfn "%s" content
+
+
+    0
