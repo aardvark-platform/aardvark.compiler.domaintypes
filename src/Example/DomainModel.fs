@@ -25,5 +25,5 @@ type State =
         primary     : Object
         viewTrafo   : Trafo3d
         objects     : hset<Object>
-        test        : array<Object>
+        test        : plist<Object>
     }

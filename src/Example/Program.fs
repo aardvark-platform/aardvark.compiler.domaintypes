@@ -25,7 +25,7 @@ let test () =
             primary = o
             viewTrafo = Trafo3d.Identity
             objects = HSet.empty
-            test = [||] 
+            test = PList.empty
         }
 
     let mstate = MState.Create state
@@ -107,7 +107,11 @@ let main argv =
 
     for (f,content) in Map.toSeq test do
         let path = System.IO.Path.ChangeExtension(f, ".g.fs")
-        let old = File.readAllText path
+
+        let old = 
+            if File.Exists path then File.readAllText path
+            else ""
+
         if old <> content then
             File.writeAllText path content
             printfn "%s:" f

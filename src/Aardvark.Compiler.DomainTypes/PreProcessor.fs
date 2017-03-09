@@ -464,6 +464,7 @@ module Preprocessing =
                                 f.DisplayName, init, access
                         )
                     
+                    do! line "[<StructuredFormatDisplay(\"{AsString}\")>]"
                     let typeDef = scope "type %s private(__initial : %s) =" mutableName immutableName
                     do! typeDef {
                         do! line "let mutable __current = __initial"
@@ -490,8 +491,11 @@ module Preprocessing =
                                 do! line "_%s.Update(__model.%s)" fName fName
                             do! pop
                         }
-
+                        do! line ""
                         do! line "static member Create(initial) = %s(initial)" mutableName
+                        do! line ""
+                        do! line "override x.ToString() = __current.ToString()"
+                        do! line "member private x.AsString = sprintf \"%%A\" __current"
 
                     }
 
