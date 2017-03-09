@@ -8,28 +8,30 @@ open Aardvark.Compiler.DomainTypes
 [<EntryPoint>]
 let main argv = 
     
-    let mo =     
-        {
-            fileName    = "sadsad"
-            bounds      = Box3d.Unit
-        }
-    let o = { name = "obj"; trafo = Trafo3d.Identity; model = mo }
-
-    let state = { primary = o; viewTrafo = Trafo3d.Identity; objects = HSet.empty; test = [||] }
-
-    let mstate = MState(state)
-
-    let name = mstate.primary.name
-
-    let a = mstate.viewTrafo.GetValue()
-    printfn "%A" a.Forward
-
-    transact (fun () ->
-        mstate.Apply({ state with viewTrafo = Trafo3d.Scale(2.0) })
-    )
-    let b = mstate.viewTrafo.GetValue()
-    printfn "%A" b.Forward
-    System.Environment.Exit 0
+//    let mo =     
+//        {
+//            fileName    = "sadsad"
+//            bounds      = Box3d.Unit
+//        }
+//    let o = { name = "obj"; trafo = Trafo3d.Identity; model = mo }
+//
+//    let state = { primary = o; viewTrafo = Trafo3d.Identity; objects = HSet.empty; test = [||] }
+//
+//    let mstate = MState(state)
+//
+//    let name = mstate.primary.name
+//    
+//    let objects = mstate.objects
+//
+//    let a = mstate.viewTrafo.GetValue()
+//    printfn "%A" a.Forward
+//
+//    transact (fun () ->
+//        mstate.Update { state with viewTrafo = Trafo3d.Scale(2.0) }
+//    )
+//    let b = mstate.viewTrafo.GetValue()
+//    printfn "%A" b.Forward
+//    System.Environment.Exit 0
 
 
 //    [<DomainType>]
@@ -50,6 +52,9 @@ let main argv =
 //        }
 
 
-    let test = Preprocessing.run @"C:\Users\Schorsch\Development\aardvark-compiler-domaintypes\src\Example\Example.fsproj"
-    printfn "%A" test
+    let test = Preprocessing.run @"E:\Development\aardvark-compiler-domaintypes\src\Example\Example.fsproj" |> Option.get
+
+    for (f,content) in Map.toSeq test do
+        printfn "%s:" f
+        printfn "%s" content
     0 // return an integer exit code

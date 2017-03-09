@@ -19,8 +19,6 @@ NUGET
       System.Reactive.Linq (>= 3.0 < 3.1)
   remote: http://api.nuget.org/v3/index.json
     DevILSharp (0.0.13)
-    Fantomas (2.5)
-      FSharp.Compiler.Service (>= 10.0.1)
     FSharp.Compiler.Service (10.0.3)
       System.Collections.Immutable (>= 1.2)
       System.Reflection.Metadata (>= 1.4.1-beta-24227-04)
