@@ -78,19 +78,22 @@ module Preprocessing =
         let private rx = System.Text.RegularExpressions.Regex @"`[0-9]+"
 
         let rec immutableName (e : FSharpType) =
-            if e.HasTypeDefinition  then
+            
+            if e.HasTypeDefinition then
                 let def = e.TypeDefinition
+
+                let qualifiedName = 
+                    match def.AccessPath with
+                        | "global" -> def.DisplayName
+                        | ns -> ns + "." + def.DisplayName
+
                 let targs = e.GenericArguments |> Seq.toList
                 match targs with
                     | [] -> 
-                        match def.TryFullName with
-                            | Some name -> name
-                            | None -> def.DisplayName
+                        qualifiedName
                     | _ ->
                         let targs = targs |> List.map immutableName |> String.concat ", " |> sprintf "<%s>"
-                        match def.TryFullName with
-                            | Some name -> rx.Replace(name, targs) 
-                            | None -> def.DisplayName + targs
+                        qualifiedName + targs
             else
                 failwithf "[Domain] no definition for %A" e 
 
@@ -129,7 +132,6 @@ module Preprocessing =
         | Namespace of Option<string> * list<EntityTree>
         | Module of name : string * autoOpen : bool * moduleSuffix : bool * content : list<EntityTree>
         | Type of FSharpEntity
-
 
     let rec buildEntityTree (e : FSharpImplementationFileDeclaration) : Option<EntityTree> =
         match e with
@@ -238,6 +240,9 @@ module Preprocessing =
             aInit = sprintf "ResetMod(%s)"
         }
              
+    type FSharpField with
+        member x.CleanName = x.Name.ToLower()
+      
 
     let generateAdapter (t : FSharpType) =
         codegen {
@@ -312,9 +317,6 @@ module Preprocessing =
              
         }
 
-    type FSharpField with
-        member x.CleanName = x.Name.ToLower()
-      
     let generateMutableType (e : FSharpEntity) =
         codegen {
             let immutableName = FSharpEntity.immutableName e
@@ -381,6 +383,17 @@ module Preprocessing =
                     do! line "override x.ToString() = __current.ToString()"
                     do! line "member private x.AsString = sprintf \"%%A\" __current"
 
+                }
+
+                do! line ""
+                do! line ""
+
+
+                do! line "[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]"
+                let mModule = scope "module %s =" mutableName
+                do! mModule {
+                    for (name,_,_) in annotatedFields do
+                        do! line "let inline %s (m : %s) = m.%s" name mutableName name
                 }
 
                 do! line ""
@@ -535,6 +548,41 @@ module Preprocessing =
 
         }
     
+    let generateLenses (e : FSharpEntity) =
+        codegen {
+            let eType = FSharpEntity.immutableName e
+            let name = e.DisplayName
+            if e.IsFSharpRecord then
+
+                do! line "[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]"
+                let mModule = scope "module %s =" name
+                do! mModule {
+                    do! line "[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]"
+                    let lensModule = scope "module Lens ="
+                    do! lensModule {
+                        for f in e.FSharpFields do
+                            let fName = f.Name
+                            let fType = FSharpType.immutableName f.FieldType
+
+                            let lens = scope "let %s =" fName
+                            do! lens {
+                                do! line "{ new Lens<%s, %s>() with" eType fType
+                                do! push
+                                
+                                do! line "override x.Get(r) = r.%s" fName
+                                do! line "override x.Set(r,v) = { r with %s = v }" fName
+                                do! line "override x.Update(r,f) = { r with %s = f r.%s }" fName fName
+
+                                do! pop
+                                do! line "}"
+                            }
+                    }
+                }
+
+        }
+
+
+
     let rec generateMutableModelInternal (file : string) (l : EntityTree) =
         codegen {
             match l with
@@ -564,6 +612,9 @@ module Preprocessing =
                     
                 | Type(e) ->
                     do! generateMutableType e
+                    do! line ""
+                    do! line ""
+                    do! generateLenses e
         }
 
     let generateMutableModel (file : string) (l : EntityTree) =
@@ -573,6 +624,7 @@ module Preprocessing =
                     do! line "namespace %s" ns
                     do! line ""
                     do! line "open System"
+                    do! line "open Aardvark.Base"
                     do! line "open Aardvark.Base.Incremental"
                     do! line ""
                     do! line "[<AutoOpen>]"
