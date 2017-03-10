@@ -3,6 +3,8 @@ id Aardvark.Compiler.DomainTypes
 authors VRVis Research Center
 description
     Domain-Type Preprocessor for FSharp Projects
+dependencies
+	Aardvark.Base.Incremental >= 3.0.3
 files
     ..\..\bin\Release\Aardvark.Compiler.DomainTypes.dll ==> build
     ..\..\bin\Release\Aardvark.Compiler.DomainTypes.targets ==> build
