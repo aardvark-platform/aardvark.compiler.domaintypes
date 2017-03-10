@@ -41,6 +41,7 @@ NUGET
       FSharp.Core
     FAKE (4.41.7) - content: none
     FSharp.Core (4.0.0.1) - content: none
+    ilmerge (2.14.1208)
     Microsoft.CSharp (4.0.1) - content: none, framework: >= netstandard10
       System.Collections (>= 4.0.11) - framework: dnxcore50, >= netstandard13
       System.Diagnostics.Debug (>= 4.0.11) - framework: dnxcore50, >= netstandard13
@@ -285,8 +286,6 @@ NUGET
       System.Text.Encoding (>= 4.0.11) - framework: dnxcore50, >= netstandard13
       System.Threading (>= 4.0.11) - framework: dnxcore50, >= netstandard13
       System.Xml.ReaderWriter (>= 4.0.11) - framework: dnxcore50, netstandard10, >= netstandard13
-  remote: https://api.nuget.org/v3/index.json
-    ilmerge (2.14.1208)
 GITHUB
   remote: vrvis/Aardvark.Fake
     FULLPROJECT (c87283d45d9e55a53d66de85dad1455f4fa71c41)

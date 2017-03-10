@@ -27,7 +27,7 @@
     <DocumentationFile>
     </DocumentationFile>
     <Prefer32Bit>false</Prefer32Bit>
-    <StartArguments>C:\Users\Schorsch\Development\aardvark-compiler-domaintypes\src\Example\Example.fsproj</StartArguments>
+    <StartArguments>E:\Development\aardvark-compiler-domaintypes\src\Example\Example.fsproj</StartArguments>
     <OtherFlags>
     </OtherFlags>
   </PropertyGroup>
@@ -42,7 +42,7 @@
     <DocumentationFile>
     </DocumentationFile>
     <Prefer32Bit>false</Prefer32Bit>
-    <StartArguments>C:\Users\Schorsch\Development\aardvark-compiler-domaintypes\src\Example\Example.fsproj</StartArguments>
+    <StartArguments>E:\Development\aardvark-compiler-domaintypes\src\Example\Example.fsproj</StartArguments>
     <OtherFlags>
     </OtherFlags>
   </PropertyGroup>
@@ -98,13 +98,13 @@
   <Choose>
     <When Condition="$(TargetFrameworkIdentifier) == '.NETFramework' And $(TargetFrameworkVersion) == 'v4.5'">
       <ItemGroup>
-        <Reference Include="FSharp.Compiler.Service">
-          <HintPath>..\..\packages\FSharp.Compiler.Service\lib\net45\FSharp.Compiler.Service.dll</HintPath>
+        <Reference Include="FSharp.Compiler.Service.MSBuild.v12">
+          <HintPath>..\..\packages\FSharp.Compiler.Service\lib\net45\FSharp.Compiler.Service.MSBuild.v12.dll</HintPath>
           <Private>True</Private>
           <Paket>True</Paket>
         </Reference>
-        <Reference Include="FSharp.Compiler.Service.MSBuild.v12">
-          <HintPath>..\..\packages\FSharp.Compiler.Service\lib\net45\FSharp.Compiler.Service.MSBuild.v12.dll</HintPath>
+        <Reference Include="FSharp.Compiler.Service">
+          <HintPath>..\..\packages\FSharp.Compiler.Service\lib\net45\FSharp.Compiler.Service.dll</HintPath>
           <Private>True</Private>
           <Paket>True</Paket>
         </Reference>

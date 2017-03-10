@@ -2,10 +2,7 @@
 // See the 'F# Tutorial' project for more help.
 open Aardvark.Base
 open Aardvark.Base.Incremental
-open DomainModel.Blubber
-open DomainModel.Mutable.Blubber
-open Aardvark.Compiler.DomainTypes
-
+open DomainModel
 
 let test () =
     let mo =     
@@ -103,52 +100,5 @@ let testUnion() =
 let main argv =
     //test()
     //testUnion()
-
-
-    let fsProjPath = @"C:\Users\Schorsch\Development\aardvark-compiler-domaintypes\src\Example\Example.fsproj"
-
-    let files =
-        [
-            "Tests.fs"
-            "DomainModel.fs"
-            "Program.fs"
-        ]
-
-    let references =
-        Set.ofList [
-            "System.Drawing.dll"
-            "Aardvark.Compiler.DomainTypes.exe"
-            "Aardvark.Base.dll"
-            "Aardvark.Base.Essentials.dll"
-            "Aardvark.Base.TypeProviders.dll"
-            "Aardvark.Base.FSharp.dll"
-            "Aardvark.Base.Incremental.dll"
-            "DevILSharp.dll"
-
-            
-            "FSharp.Compiler.Service.MSBuild.v12.dll"
-            "FSharp.Compiler.Service.dll"
-            "FSharp.Compiler.Service.ProjectCracker.dll"
-            "System.Collections.Immutable.dll"
-            "System.Reactive.Core.dll"
-            "System.Reactive.Interfaces.dll"
-            "System.Reactive.Linq.dll"
-            "System.Reflection.Metadata.dll"
-        ]
-
-    let test = Preprocessing.run fsProjPath references files |> Async.RunSynchronously |> Option.get
-
-    for (f,content) in Map.toSeq test do
-        let path = System.IO.Path.ChangeExtension(f, ".g.fs")
-
-        let old = 
-            if File.Exists path then File.readAllText path
-            else ""
-
-        if old <> content then
-            File.writeAllText path content
-            printfn "%s:" f
-            printfn "%s" content
-
 
     0

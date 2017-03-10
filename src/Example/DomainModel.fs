@@ -3,7 +3,9 @@
 open Aardvark.Base
 open Aardvark.Base.Incremental
 
-module Blubber = 
+[<AutoOpen>]
+module Blubber =
+
 
     type Model =
         {

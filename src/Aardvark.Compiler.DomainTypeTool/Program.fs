@@ -13,30 +13,54 @@ let main argv =
         printfn "usage: %s <fsprojpath>" me
         -1
     else
+        let sw = System.Diagnostics.Stopwatch()
         let proj = argv.[0]
-        printf "cracking project ..."
+        printf "cracking project: "
+        sw.Start()
         let options = ProjectCracker.GetProjectOptionsFromProjectFile proj
-        printfn " done"
+        sw.Stop()
+        printfn "done (%.0fs)" sw.Elapsed.TotalSeconds
 
-        printf "processing ..."
+        printf "processing: "
+        sw.Restart()
         let res = Preprocessing.runWithOptions options |> Async.RunSynchronously
         match res with
-            | Some res ->
-                printfn " done"
+            | Worked res ->
+                sw.Stop()
+                printfn "done (%.0fs)" sw.Elapsed.TotalSeconds
                 printfn "writing output"
-                for (f,content) in Map.toSeq res do
-                    let path = System.IO.Path.ChangeExtension(f, ".g.fs")
-                    printf "    %s" (Path.GetFileName path)
-                    let old = 
-                        if File.Exists path then File.ReadAllText path
-                        else ""
+                for (f,prep) in Map.toSeq res do
+                    match prep with
+                        | Finished(warnings, content) ->
+                            let path = System.IO.Path.ChangeExtension(f, ".g.fs")
+                            printf "    %s: " (Path.GetFileName f)
 
-                    if old <> content then
-                        File.WriteAllText(path, content)
+                            for w in warnings do 
+                                printfn ""
+                                printf "        WARNING: %A" w
 
-                    printfn ""
-                printfn "done"
+                            let old = 
+                                if File.Exists path then File.ReadAllText path
+                                else ""
+
+                            if old <> content then
+                                File.WriteAllText(path, content)
+
+                            if List.isEmpty warnings then
+                                printfn "done"
+                            else
+                                printfn ""
+
+                        | Faulted(warnings, err) ->
+                            printfn "    %s: " (Path.GetFileName f)
+                            for w in warnings do 
+                                printfn "        WARNING: %A" w
+
+                            printfn "        ERROR: %A" err
                 0
-            | None ->
-                printfn "error"
+            | CompilerError errors ->
+                sw.Stop()
+                printfn "faulted"
+                for e in errors do
+                    printfn "    ERROR: %A" e
                 -1
