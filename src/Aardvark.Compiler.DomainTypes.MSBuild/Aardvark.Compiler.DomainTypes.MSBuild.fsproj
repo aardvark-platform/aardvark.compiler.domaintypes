@@ -7,12 +7,12 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>378df51a-1c31-4af4-aced-9cfb5c1252e9</ProjectGuid>
     <OutputType>Library</OutputType>
-    <RootNamespace>Aardvark.Compiler.DomainTypes</RootNamespace>
-    <AssemblyName>Aardvark.Compiler.DomainTypes</AssemblyName>
+    <RootNamespace>Aardvark.Compiler.DomainTypes.MSBuild</RootNamespace>
+    <AssemblyName>Aardvark.Compiler.DomainTypes.MSBuild</AssemblyName>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <TargetFSharpCoreVersion>4.4.0.0</TargetFSharpCoreVersion>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-    <Name>Aardvark.Compiler.DomainTypes</Name>
+    <Name>Aardvark.Compiler.DomainTypes.MSBuild</Name>
     <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">

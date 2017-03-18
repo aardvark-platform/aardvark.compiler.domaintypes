@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
 VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Aardvark.Compiler.DomainTypes", "Aardvark.Compiler.DomainTypes\Aardvark.Compiler.DomainTypes.fsproj", "{378DF51A-1C31-4AF4-ACED-9CFB5C1252E9}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Aardvark.Compiler.DomainTypes.MSBuild", "Aardvark.Compiler.DomainTypes.MSBuild\Aardvark.Compiler.DomainTypes.MSBuild.fsproj", "{378DF51A-1C31-4AF4-ACED-9CFB5C1252E9}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Example", "Example\Example.fsproj", "{355F5832-0293-4EE7-9AE2-8743F9DE02E0}"
 EndProject

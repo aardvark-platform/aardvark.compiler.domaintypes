@@ -6,7 +6,7 @@ description
 dependencies
 	Aardvark.Base.Incremental >= 3.0.3
 files
-    ..\..\bin\Release\Aardvark.Compiler.DomainTypes.dll ==> build
+    ..\..\bin\Release\Aardvark.Compiler.DomainTypes.MSBuild.dll ==> build
     ..\..\bin\Release\Aardvark.Compiler.DomainTypes.targets ==> build
 	..\..\bin\Release\FSharp.Compiler.Service.dll ==> build
 	..\..\bin\Release\FSharp.Compiler.Service.MSBuild.v12.dll ==> build

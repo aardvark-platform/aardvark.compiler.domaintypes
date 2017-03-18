@@ -59,8 +59,8 @@
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Aardvark.Compiler.DomainTypes\Aardvark.Compiler.DomainTypes.fsproj">
-      <Name>Aardvark.Compiler.DomainTypes</Name>
+    <ProjectReference Include="..\Aardvark.Compiler.DomainTypes.MSBuild\Aardvark.Compiler.DomainTypes.MSBuild.fsproj">
+      <Name>Aardvark.Compiler.DomainTypes.MSBuild</Name>
       <Project>{378df51a-1c31-4af4-aced-9cfb5c1252e9}</Project>
       <Private>True</Private>
     </ProjectReference>

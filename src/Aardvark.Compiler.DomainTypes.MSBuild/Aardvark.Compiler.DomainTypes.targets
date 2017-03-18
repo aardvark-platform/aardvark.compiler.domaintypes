@@ -1,5 +1,5 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <UsingTask TaskName="Aardvark.Compiler.DomainTypes.Preprocess" AssemblyFile="Aardvark.Compiler.DomainTypes.dll" />
+  <UsingTask TaskName="Aardvark.Compiler.DomainTypes.Preprocess" AssemblyFile="Aardvark.Compiler.DomainTypes.MSBuild.dll" />
   <Target Name="UpdateGeneratedFiles" AfterTargets="AfterResolveReferences" Condition="'@(Compile)' != ''">
     <ItemGroup>
       <OldItems Include="@(Compile)" />
