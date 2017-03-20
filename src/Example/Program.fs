@@ -3,8 +3,10 @@
 open Aardvark.Base
 open Aardvark.Base.Incremental
 open DomainModel
+open System.Threading
 
 let test () =
+    
     let mo =     
         {
             fileName    = "sadsad"
@@ -95,9 +97,109 @@ let testUnion() =
     transact (fun () -> sepp.Update u)
     
     System.Environment.Exit 0
+    
+open System.Threading.Tasks
+open System.Runtime.CompilerServices
+
+
+let listy =
+    proclist {
+        for i in 1 .. 100 do
+            do! Proc.Sleep 100
+            yield i
+    }
+
+let testy (sem : SemaphoreSlim) (t : Task<int>) =
+    proc {
+        try
+            //printfn "before: %A" Thread.CurrentThread.ManagedThreadId
+            do! Proc.SwitchToNewThread()
+            try
+                printfn "thread: %A" Thread.CurrentThread.ManagedThreadId
+                do! sem.Await()
+                printfn "thread: %A" Thread.CurrentThread.ManagedThreadId
+                let! v = t
+                return 2 * v
+            with e ->
+                printfn "exn %A" (e.GetType())
+        finally
+            printfn "cleanup"
+    }
+
 
 [<EntryPoint>]
 let main argv =
+
+    let rec subscribe (ct : CancellationToken) (f : 'a -> unit) (l : ProcList<'a, unit>) =
+        let s = { ct = ct }
+        l.run.ContinueWith s (fun res ->
+            match res with
+                | Faulted e -> printfn "faulted %A" e
+                | Cancelled -> printfn "cancelled"
+                | Value v -> 
+                    match v with
+                        | Nil -> ()
+                        | Cons(h,t) ->
+                            f h
+                            subscribe ct f t
+        )
+
+    let cancel = new CancellationTokenSource()
+    listy |> subscribe cancel.Token (printfn "value: %A")
+    System.Console.ReadLine() |> ignore
+    cancel.Cancel()
+    System.Console.ReadLine() |> ignore
+    System.Environment.Exit 0
+
+    use sem = new SemaphoreSlim(0)
+
+    let v = new TaskCompletionSource<int>()
+    let cancel = new CancellationTokenSource()
+    printfn "start"
+    let a = Proc.StartAsTask(testy sem v.Task , cancellationToken = cancel.Token)
+    sem.Release() |> ignore
+    cancel.Cancel()
+    printfn "end: %A" (a.Result)
+    printfn ""
+    
+    let v = new TaskCompletionSource<int>()
+    let cancel = new CancellationTokenSource()
+    printfn "start"
+    let a = Proc.StartAsTask(testy sem v.Task , cancellationToken = cancel.Token)
+    sem.Release() |> ignore
+    v.SetCanceled()
+    printfn "end: %A" (a.Result)
+    printfn ""
+    
+    let v = new TaskCompletionSource<int>()
+    let cancel = new CancellationTokenSource()
+    printfn "start"
+    let a = Proc.StartAsTask(testy sem v.Task , cancellationToken = cancel.Token)
+    sem.Release() |> ignore
+    v.SetResult 3
+    printfn "end: %A" (a.Result)
+    printfn ""
+    
+    let v = new TaskCompletionSource<int>()
+    let cancel = new CancellationTokenSource()
+    printfn "start"
+    let a = Proc.StartAsTask(testy sem v.Task , cancellationToken = cancel.Token)
+    sem.Release() |> ignore
+    v.SetException (System.ArgumentException "asdasd")
+    printfn "end: %A" (a.Result)
+    printfn ""
+    
+    let v = new TaskCompletionSource<int>()
+    let cancel = new CancellationTokenSource()
+    printfn "start"
+    let a = Proc.StartAsTask(testy sem v.Task , cancellationToken = cancel.Token)
+    Thread.Sleep(100)
+    sem.Dispose()
+    v.SetResult(5)
+    printfn "end: %A" (a.Result)
+    printfn ""
+    System.Console.ReadLine() |> ignore
+
     //test()
     //testUnion()
 

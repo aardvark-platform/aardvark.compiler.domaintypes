@@ -48,6 +48,8 @@
   <ItemGroup>
     <Compile Include="Core.fs" />
     <Compile Include="Resettables.fs" />
+    <Compile Include="Proc.fs" />
+    <Compile Include="Computation.fs" />
   </ItemGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>
