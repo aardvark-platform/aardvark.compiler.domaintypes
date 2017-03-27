@@ -69,9 +69,37 @@ module Preprocessing =
             else
                 false
 
-        let mutableName (e : FSharpType) =
+        let mutableNameRef (prefix : string) (e : FSharpType) =
             if e.HasTypeDefinition  then
-                "M" + e.TypeDefinition.DisplayName
+                let def = e.TypeDefinition
+                let ns, m =
+                    match def.Namespace with
+                        | Some ns ->
+                            if ns.Length + 1 < def.AccessPath.Length then
+                                let m = def.AccessPath.Substring(ns.Length + 1) 
+                                ns, m
+                            else
+                                ns, ""
+                        | _ ->
+                            "", def.AccessPath
+
+
+                let access = 
+                    match ns, m with
+                        | "", "" -> "Mutable"
+                        | ns, "" -> ns + ".Mutable"
+                        | "", m -> "Mutable." + m
+                        | ns, m -> ns + ".Mutable." + m
+
+                let path = 
+                    if access.StartsWith prefix then
+                        access.Substring(prefix.Length)
+                    else
+                        access
+
+
+                if path = "" then "M" + def.DisplayName
+                else path + ".M" + def.DisplayName
             else
                 failwithf "[Domain] no definition for %A" e 
         
@@ -116,13 +144,9 @@ module Preprocessing =
                 | Some f -> f
                 | None -> e.DisplayName
 
-        let mutableName (e : FSharpEntity) =
+        let mutableNameDef (e : FSharpEntity) =
             "M" + e.DisplayName 
 
-        let mutableNameSpace (e : FSharpEntity) =
-            let name = e.FullName
-            let idx = name.LastIndexOf '.'
-            name.Substring(0, idx)
 
     module FSharpField =
         let treatAsValue (f : FSharpField) =
@@ -246,9 +270,11 @@ module Preprocessing =
 
     let generateAdapter (t : FSharpType) =
         codegen {
+            let! scope = CodeGen.currentScope
+
             match t with
                 | PList (DomainType t) ->
-                    let tName = FSharpType.mutableName t
+                    let tName = FSharpType.mutableNameRef scope t
                     return {
                         aType = Some "alist<_>"
                         aInit = fun fName -> sprintf "ResetMapList(%s, (fun _ -> %s.Create), fun (m,i) -> m.Update(i))"  fName tName
@@ -261,7 +287,7 @@ module Preprocessing =
                     }
 
                 | HSet (DomainType t) ->
-                    let tName = FSharpType.mutableName t
+                    let tName = FSharpType.mutableNameRef scope t
                     let mutable getKey = "unbox"
                     match tryGetUniqueField t with
                         | Some field ->
@@ -276,7 +302,7 @@ module Preprocessing =
                     }
 
                 | HSet t ->
-                    let tName = FSharpType.mutableName t
+                    let tName = FSharpType.mutableNameRef scope t
                     return {
                         aType = Some "aset<_>"
                         aInit = fun fName -> sprintf "ResetSet(%s)" fName
@@ -284,7 +310,7 @@ module Preprocessing =
 
             
                 | Option (DomainType t) ->
-                    let tName = FSharpType.mutableName t
+                    let tName = FSharpType.mutableNameRef scope t
                     return {
                         aType = Some "IMod<_>"
                         aInit = fun fName -> sprintf "ResetMapOption(%s, %s.Create, fun (m,i) -> m.Update(i))" fName tName
@@ -305,7 +331,7 @@ module Preprocessing =
                     
 
                 | DomainType t ->
-                    let mName = FSharpType.mutableName t
+                    let mName = FSharpType.mutableNameRef scope t
                     return {
                         aType = None
                         aInit = sprintf "%s.Create(%s)" mName
@@ -320,7 +346,7 @@ module Preprocessing =
     let generateMutableType (e : FSharpEntity) =
         codegen {
             let immutableName = FSharpEntity.immutableName e
-            let mutableName = FSharpEntity.mutableName e
+            let defName = FSharpEntity.mutableNameDef e
             let targs = e.GenericParameters
             if targs.Count > 0 then
                 let range = e.DeclarationLocation
@@ -351,7 +377,7 @@ module Preprocessing =
                     )
                     
                 do! line "[<StructuredFormatDisplay(\"{AsString}\")>]"
-                let typeDef = scope "type %s private(__initial : %s) =" mutableName immutableName
+                let typeDef = scope "type %s private(__initial : %s) =" defName immutableName
                 do! typeDef {
                     do! line "let mutable __current = __initial"
 
@@ -378,7 +404,7 @@ module Preprocessing =
                         do! pop
                     }
                     do! line ""
-                    do! line "static member Create(initial) = %s(initial)" mutableName
+                    do! line "static member Create(initial) = %s(initial)" defName
                     do! line ""
                     do! line "override x.ToString() = __current.ToString()"
                     do! line "member private x.AsString = sprintf \"%%A\" __current"
@@ -390,10 +416,10 @@ module Preprocessing =
 
 
                 do! line "[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]"
-                let mModule = scope "module %s =" mutableName
+                let mModule = scope "module %s =" defName
                 do! mModule {
                     for (name,_,_) in annotatedFields do
-                        do! line "let inline %s (m : %s) = m.%s" name mutableName name
+                        do! line "let inline %s (m : %s) = m.%s" name defName name
                 }
 
                 do! line ""
@@ -405,7 +431,7 @@ module Preprocessing =
                     
                     
                 do! line "[<AbstractClass; System.Runtime.CompilerServices.Extension; StructuredFormatDisplay(\"{AsString}\")>]"
-                let baseType = scope "type %s() =" mutableName
+                let baseType = scope "type %s() =" defName
                 do! baseType {
                     do! line "abstract member TryUpdate : %s -> bool" immutableName
                     do! line "abstract member AsString : string"
@@ -428,22 +454,22 @@ module Preprocessing =
                                 if lhs = "" then ""
                                 else lhs |> sprintf "(%s)"
                                 
-                            do! line "| %s%s -> M%s(%s) :> %s" c.Name lhs c.Name rhs mutableName
+                            do! line "| %s%s -> M%s(%s) :> %s" c.Name lhs c.Name rhs defName
 
                         do! pop
                     }
 
                     do! line ""
                     do! line "static member Create(v : %s) =" immutableName
-                    do! line "    ResetMod(%s.CreateValue v) :> IMod<_>" mutableName
+                    do! line "    ResetMod(%s.CreateValue v) :> IMod<_>" defName
                     do! line ""
 
                     do! line "[<System.Runtime.CompilerServices.Extension>]"
-                    do! line "static member Update(m : IMod<%s>, v : %s) =" mutableName immutableName
+                    do! line "static member Update(m : IMod<%s>, v : %s) =" defName immutableName
                     do! push
-                    do! line "let m = unbox<ResetMod<%s>> m" mutableName
+                    do! line "let m = unbox<ResetMod<%s>> m" defName
                     do! line "if not (m.GetValue().TryUpdate v) then"
-                    do! line "    m.Update(%s.CreateValue v)" mutableName
+                    do! line "    m.Update(%s.CreateValue v)" defName
                     do! pop
 
                 }
@@ -465,7 +491,7 @@ module Preprocessing =
                     let mName = "M" + c.Name
                     let caseType = scope "and private %s(%s) =" mName argDef
                     do! caseType {
-                        do! line "inherit %s()" mutableName
+                        do! line "inherit %s()" defName
                         do! line ""
                         do! line "let mutable __current = __initial"
                         for (f, adapter) in annotatedFields do
@@ -518,10 +544,10 @@ module Preprocessing =
                     
                 do! line ""
                 do! line "[<AutoOpen>]"
-                let patterns = scope "module %sPatterns =" mutableName
+                let patterns = scope "module %sPatterns =" defName
                 do! patterns {
                     let allNames = cases |> Seq.map (fun c -> "M" + c.Name) |> String.concat "|" 
-                    do! line "let (|%s|) (m : %s) =" allNames mutableName
+                    do! line "let (|%s|) (m : %s) =" allNames defName
                     do! push
                     do! line "match m with"
                         
@@ -598,6 +624,7 @@ module Preprocessing =
                         do! generateMutableModelInternal file c
 
                 | Module(name, autoOpen, suffix, children) ->
+                    do! CodeGen.pushScope name
                     if autoOpen then
                         do! line "[<AutoOpen>]"
                     if suffix then
@@ -609,6 +636,7 @@ module Preprocessing =
                     for c in children do
                         do! generateMutableModelInternal file c
                     do! pop
+                    do! CodeGen.popScope
                     
                 | Type(e) ->
                     do! generateMutableType e
@@ -621,6 +649,7 @@ module Preprocessing =
         codegen {
             match l with
                 | Namespace(Some ns, children) ->
+                    do! CodeGen.pushScope ns
                     do! line "namespace %s" ns
                     do! line ""
                     do! line "open System"
@@ -631,12 +660,16 @@ module Preprocessing =
                     do! line "module Mutable ="
                     do! line ""
                     do! push
+                    do! CodeGen.pushScope "Mutable"
                     for c in children do
                         do! generateMutableModelInternal file c
                     do! pop
+                    do! CodeGen.popScope
 
                 | Namespace(None, [Module(name, false, false, children)])
                 | Module(name, false, false, children) ->
+                
+                    do! CodeGen.pushScope name
                     do! line "module %s" name
                     do! line ""
                     do! line "open System"
@@ -644,6 +677,7 @@ module Preprocessing =
                     do! line ""
                     for c in children do
                         do! generateMutableModelInternal file c
+                    do! CodeGen.popScope
 
                 | _ ->
                     let range = Range.mkRange file (Range.mkPos 0 0) (Range.mkPos 0 0)
@@ -680,6 +714,7 @@ module Preprocessing =
                         let c = generateMutableModels f c
                         let state, info = 
                             c.generate {
+                                scope = []
                                 result = System.Text.StringBuilder()
                                 indent = ""
                                 warnings = []

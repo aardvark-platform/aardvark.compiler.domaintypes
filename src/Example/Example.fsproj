@@ -56,6 +56,7 @@
     <Compile Include="DomainModel.fs">
       <DomainTypes>True</DomainTypes>
     </Compile>
+    <Compile Include="DomainModel2.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

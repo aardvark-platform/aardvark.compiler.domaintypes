@@ -22,6 +22,7 @@ type Result<'a> =
 
 type CodeGenState = 
     { 
+        scope : list<string>
         result : StringBuilder
         indent : string 
         warnings : list<ErrorInfo>
@@ -94,6 +95,23 @@ type CodeGenBuilder() =
 
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module CodeGen =
+    
+    let pushScope (name : string) =
+        { generate = fun s ->
+            { s with scope = s.scope @ [name] }, Success()
+        }
+
+    let popScope =
+        { generate = fun s ->
+            { s with scope = List.take (List.length s.scope - 1) s.scope }, Success()
+        }
+
+    let currentScope =
+        { generate = fun s ->
+            s, Success(s.scope |> String.concat ".")
+        }
+
+
     let line fmt = 
         let inner (str : string) =
             { generate = fun s ->
@@ -155,6 +173,7 @@ module CodeGen =
     let run (g : CodeGen<unit>) =
         let res = 
             g.generate {
+                scope = []
                 result = System.Text.StringBuilder()
                 indent = ""
                 warnings = []
