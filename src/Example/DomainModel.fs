@@ -34,4 +34,7 @@ type State =
         objects     : hset<Object>
         [<TreatAsValue>]
         test        : plist<Object>
+
+
+        threads     : ThreadPool<int>
     }

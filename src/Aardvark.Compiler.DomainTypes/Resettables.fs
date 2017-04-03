@@ -218,3 +218,74 @@ type ResetMapOption<'a, 'b>(initial : Option<'a>, create : 'a -> 'b, update : 'b
 
     override x.Compute(token) =
         b.GetValue(token)
+
+type ResetMap<'k, 'v>(initial : hmap<'k, 'v>) =
+    let history = History HMap.trace
+    do 
+        let delta = HMap.computeDelta HMap.empty initial
+        history.Perform delta |> ignore
+
+    let mutable current = initial
+
+    member x.Update(values : hmap<'k, 'v>) =
+        let delta = HMap.computeDelta current values
+        history.Perform delta |> ignore
+        current <- values
+
+    interface amap<'k, 'v> with
+        member x.IsConstant = false
+        member x.Content = history :> IMod<_>
+        member x.GetReader() = history.NewReader()
+
+type ResetMapMap<'a, 'b, 'v>(initial : hmap<'a, 'b>, create : 'a -> 'b -> 'v, update : 'v * 'b -> unit) =
+
+    let history = History HMap.trace
+    let cache = Dict<'a, ref<'b> * 'v>()
+
+    let mutable current = HMap.empty
+
+    let update (keys : hmap<'a, 'b>) =
+        let keyDeltas = HMap.computeDelta current keys
+
+        let valueDeltas =
+            keyDeltas |> HMap.choose (fun i op ->
+                match op with
+                    | Set k ->
+                        let mutable isNew = false
+                        let r, v = 
+                            cache.GetOrCreate(i, fun _ ->
+                                isNew <- true
+                                ref k, create i k
+                            )
+
+                        if isNew then
+                            Some (Set v)
+                        else
+                            r := k
+                            None
+
+                    | Remove ->
+                        match cache.TryRemove i with
+                            | (true, (_,v)) ->
+                                Some Remove
+                            | _ ->
+                                None
+            )
+
+        current <- keys
+        history.Perform valueDeltas |> ignore
+        for (r, v) in cache.Values do
+            update(v, !r)       
+
+    do update initial
+
+    member x.Update(keys : hmap<'a, 'b>) =
+        update keys
+
+    override x.ToString() =
+        current.ToString()
+
+    interface amap<'a, 'v> with
+        member x.IsConstant = false
+        member x.Content = history :> IMod<_>
+        member x.GetReader() = history.NewReader()

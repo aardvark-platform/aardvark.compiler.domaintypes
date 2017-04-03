@@ -27,10 +27,10 @@ let test () =
             viewTrafo = Trafo3d.Identity
             objects = HSet.empty
             test = PList.empty
+            threads = ThreadPool.create()
         }
 
     let mstate = MState.Create state
-
 
     mstate.objects |> ASet.unsafeRegisterCallbackKeepDisposable (fun deltas ->
         printfn "delta: %A" deltas
