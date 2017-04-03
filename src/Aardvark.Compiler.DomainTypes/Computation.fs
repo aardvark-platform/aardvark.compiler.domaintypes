@@ -173,40 +173,33 @@ module ``ProcList Builder`` =
     let proclist = ProcListBuilder()
 
 
-type CommandResult<'a> =
-    | Value of 'a
-    | Done
 
 [<AbstractClass>]
 type Command<'a>() =
-    abstract member Start : (CommandResult<'a> -> unit) -> unit
+    abstract member Start : ('a -> unit) -> unit
     abstract member Stop : unit -> unit
 
 type LeafCommand<'a>(p : ProcList<'a, unit>) =
     inherit Command<'a>()
 
-    static let mutable currentId = 0
+    let name = Guid.NewGuid()
+    let cancel = new CancellationTokenSource()
 
-    static let newId() = Interlocked.Increment(&currentId)
-
-    static let rec run (ct : CancellationToken) (f : CommandResult<'a> -> unit) (p : ProcList<'a, unit>) =
+    let rec run (ct : CancellationToken) (f : 'a -> unit) (p : ProcList<'a, unit>) =
         proc {
             let! res = p.run
             match res with
                 | Nil -> 
-                    f Done
+                    ()
                 | Cons(msg, cont) ->
-                    if not ct.IsCancellationRequested then f (Value msg)
-                    return! run ct f cont
+                    if not ct.IsCancellationRequested then 
+                        f msg
+                        do! run ct f cont
         }
 
-    let cancel = new CancellationTokenSource()
-    let ct = cancel.Token
-    let id = newId()
-
-    override x.Start(f : CommandResult<'a> -> unit) =
-        let runner = run ct f p
-        Proc.Start(runner, ct)
+    override x.Start(f : 'a -> unit) =
+        let runner = run cancel.Token f p
+        Proc.Start(runner, cancel.Token)
 
     override x.Stop() =
         cancel.Cancel()
@@ -227,40 +220,13 @@ module ThreadPool =
 
     
     let map (mapping : 'a -> 'b) (pool : ThreadPool<'a>) =
-        { store = 
+        ThreadPool(
             pool.store |> HMap.map (fun _ v -> 
                 { new Command<'b>() with
                     member x.Start(f) = v.Start(mapping >> f)
                     member x.Stop() = v.Stop()
                 }
             )
-        }
-
-    let startStop (f : 'a -> unit) (pool : IMod<ThreadPool<'a>>) =
-        let mutable o = HMap.empty
-        pool |> Mod.map (fun n ->
-            let deltas = HMap.computeDelta o n.store
-
-            deltas |> HMap.iter (fun k op ->
-                match op with
-                    | Remove ->
-                        match HMap.tryFind k o with
-                            | Some o -> o.Stop()
-                            | _ -> ()
-
-                    | Set n ->
-                        match HMap.tryFind k o with
-                            | Some o -> o.Stop()
-                            | None -> ()
-                        n.Start(fun v ->
-                            match v with
-                                | Value v ->  f v
-                                | Done -> ()
-                        )
-                    
-            )
-
-            o <- n.store
         )
 
     let add (id : string) (proc : ProcList<'a, unit>) (p : ThreadPool<'a>) =
