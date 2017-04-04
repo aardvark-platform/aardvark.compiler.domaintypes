@@ -36,5 +36,5 @@ type State =
         test        : plist<Object>
 
 
-        threads     : ThreadPool<int>
+        threads     : hmap<int, Object>
     }

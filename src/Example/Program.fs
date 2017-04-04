@@ -27,7 +27,7 @@ let test () =
             viewTrafo = Trafo3d.Identity
             objects = HSet.empty
             test = PList.empty
-            threads = ThreadPool.create()
+            threads = HMap.empty
         }
 
     let mstate = MState.Create state

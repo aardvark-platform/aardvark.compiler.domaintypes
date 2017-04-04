@@ -212,6 +212,11 @@ module Preprocessing =
             match t with
                 | Generic("hset", [a]) -> Some a
                 | _ -> None
+
+        let (|HMap|_|) (t : FSharpType) =
+            match t with
+                | Generic("hmap", [a;b]) -> Some(a,b)
+                | _ -> None
                 
         let (|PList|_|) (t : FSharpType) =
             match t with
@@ -302,10 +307,22 @@ module Preprocessing =
                     }
 
                 | HSet t ->
-                    let tName = FSharpType.mutableNameRef scope t
                     return {
                         aType = Some "aset<_>"
                         aInit = fun fName -> sprintf "ResetSet(%s)" fName
+                    }
+
+                | HMap(k, DomainType t) ->
+                    let tName = FSharpType.mutableNameRef scope t
+                    return {
+                        aType = Some "amap<_,_>"
+                        aInit = fun fName -> sprintf "ResetMapMap(%s, (fun k v -> %s.Create(v)), (fun (m,i) -> m.Update(i)))" fName tName
+                    }
+
+                | HMap(k, t) ->
+                    return {
+                        aType = Some "amap<_,_>"
+                        aInit = fun fName -> sprintf "ResetMap(%s)" fName
                     }
 
             
