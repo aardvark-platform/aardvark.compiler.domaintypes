@@ -196,3 +196,17 @@ module ``CodeGenerator Builder`` =
                         let! t = mapC f t
                         return h :: t
             }
+
+        let rec chooseC (f : 'a -> CodeGen<Option<'b>>) (l : list<'a>) =
+            codegen {
+                match l with
+                    | [] -> return []
+                    | h :: t ->
+                        let! h = f h
+                        match h with
+                            | Some h -> 
+                                let! t = chooseC f t
+                                return h :: t
+                            | None ->
+                                return! chooseC f t
+            }

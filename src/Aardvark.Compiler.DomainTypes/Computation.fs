@@ -206,19 +206,19 @@ type LeafCommand<'a>(p : ProcList<'a, unit>) =
 
 open Aardvark.Base.Incremental
 
-type ThreadPool<'a> =
-    class
-        val mutable public store : hmap<string, Command<'a>>
+type ThreadPool<'a>(_store : hmap<string, Command<'a>>) =
+    static let empty = ThreadPool<'a>(HMap.empty)
 
-        new(s) = { store = s }
-    end
+    static member Empty = empty
+    
+    member x.store = _store
+
 
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module ThreadPool =
     
-    let create() = ThreadPool(HMap.empty)
+    let empty<'msg> = ThreadPool<'msg>.Empty
 
-    
     let map (mapping : 'a -> 'b) (pool : ThreadPool<'a>) =
         ThreadPool(
             pool.store |> HMap.map (fun _ v -> 
@@ -236,7 +236,5 @@ module ThreadPool =
         ThreadPool(HMap.remove id p.store)
 
     let start (proc : ProcList<'a, unit>) (p : ThreadPool<'a>) =
-        ThreadPool(HMap.add (Guid.NewGuid() |> string) (LeafCommand(proc) :> Command<_>) p.store)
-
-    let union (l : ThreadPool<'a>) (r : ThreadPool<'a>) =
-        ThreadPool(HMap.union l.store r.store)
+        let id = Guid.NewGuid() |> string
+        ThreadPool(HMap.add id (LeafCommand(proc) :> Command<_>) p.store)

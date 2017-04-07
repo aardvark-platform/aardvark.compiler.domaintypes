@@ -152,6 +152,9 @@ module Preprocessing =
         let treatAsValue (f : FSharpField) =
             f.PropertyAttributes |> Seq.exists (fun a -> a.AttributeType.FullName = "Aardvark.Base.Incremental.TreatAsValueAttribute")
 
+        let nonIncremental (f : FSharpField) =
+            f.PropertyAttributes |> Seq.exists (fun a -> a.AttributeType.FullName = "Aardvark.Base.Incremental.NonIncrementalAttribute")
+
     type EntityTree =
         | Namespace of Option<string> * list<EntityTree>
         | Module of name : string * autoOpen : bool * moduleSuffix : bool * content : list<EntityTree>
@@ -192,10 +195,24 @@ module Preprocessing =
             if FSharpType.isDomainType t then Some t
             else None
 
+        let (|GenericAccessPath|_|) (t : FSharpType) =
+            if t.HasTypeDefinition then
+                let d = t.TypeDefinition
+                let name = 
+                    match d.AccessPath with
+                        | "global" -> d.DisplayName
+                        | p -> p + "." + d.DisplayName
+
+                let targs = t.GenericArguments |> Seq.toList
+                
+                Some(name, targs)
+            else
+                None
+
         let (|Generic|_|) (t : FSharpType) =
             if t.HasTypeDefinition then
                 let d = t.TypeDefinition
-                let name = t.TypeDefinition.DisplayName
+                let name = d.DisplayName
                 let targs = t.GenericArguments |> Seq.toList
                 
                 Some(name, targs)
@@ -226,6 +243,11 @@ module Preprocessing =
         let (|Option|_|) (t : FSharpType) =
             match t with
                 | Generic("Option", [a]) -> Some a
+                | _ -> None
+
+        let (|ThreadPool|_|) (t : FSharpType) =
+            match t with
+                | GenericAccessPath("Aardvark.Base.ThreadPool", [a]) -> Some a
                 | _ -> None
 
         let tryGetUniqueField (t : FSharpType) =
@@ -373,74 +395,81 @@ module Preprocessing =
                 let! annotatedFields =
                     e.FSharpFields
                         |> Seq.toList
-                        |> List.mapC (fun f ->
+                        |> List.chooseC (fun f ->
                             codegen {
-                                let! adapter = 
-                                    if FSharpField.treatAsValue f then
-                                        codegen { return valueAdapter }
-                                    else
-                                        generateAdapter f.FieldType
+                                if FSharpField.nonIncremental f then
+                                    return None
+                                else
+                                    let! adapter = 
+                                        if FSharpField.treatAsValue f then
+                                            codegen { return valueAdapter }
+                                        else
+                                            generateAdapter f.FieldType
 
-                                let inputName = sprintf "__initial.%s" f.DisplayName
-                                let init = sprintf "let _%s = %s" f.DisplayName (adapter.aInit inputName)
+                                    let inputName = sprintf "__initial.%s" f.DisplayName
+                                    let init = sprintf "let _%s = %s" f.DisplayName (adapter.aInit inputName)
 
-                                let access =
-                                    match adapter.aType with
-                                        | Some t -> sprintf "_%s :> %s" f.DisplayName t
-                                        | None -> sprintf "_%s" f.DisplayName
+                                    let access =
+                                        match adapter.aType with
+                                            | Some t -> sprintf "_%s :> %s" f.DisplayName t
+                                            | None -> sprintf "_%s" f.DisplayName
 
-                                return f.DisplayName, init, access
+                                    return Some (f.DisplayName, init, access)
                             }
                     )
                     
-                do! line "[<StructuredFormatDisplay(\"{AsString}\")>]"
-                let typeDef = scope "type %s private(__initial : %s) =" defName immutableName
-                do! typeDef {
-                    do! line "let mutable __current = __initial"
+                match annotatedFields with
+                    | [] -> 
+                        ()
+                    | _ ->
+                        do! line "[<StructuredFormatDisplay(\"{AsString}\")>]"
+                        let typeDef = scope "type %s private(__initial : %s) =" defName immutableName
+                        do! typeDef {
+                            do! line "let mutable __current = __initial"
 
-                    for (_, init, _) in annotatedFields do
-                        do! line "%s" init
+                            for (_, init, _) in annotatedFields do
+                                do! line "%s" init
                         
-                    do! line ""
+                            do! line ""
 
-                    for (fname, _, access) in annotatedFields do
-                        do! line "member x.%s = %s" fname access
+                            for (fname, _, access) in annotatedFields do
+                                do! line "member x.%s = %s" fname access
                     
-                    do! line ""
+                            do! line ""
 
-                    let apply = scope "member x.Update(__model : %s) =" immutableName
-                    do! apply {
-                        do! line "if not (Object.ReferenceEquals(__model, __current)) then"
-                        do! push
+                            let apply = scope "member x.Update(__model : %s) =" immutableName
+                            do! apply {
+                                do! line "if not (Object.ReferenceEquals(__model, __current)) then"
+                                do! push
 
-                        do! line "__current <- __model"
+                                do! line "__current <- __model"
                 
-                        for f in e.FSharpFields do
-                            let fName = f.DisplayName
-                            do! line "_%s.Update(__model.%s)" fName fName
-                        do! pop
-                    }
-                    do! line ""
-                    do! line "static member Create(initial) = %s(initial)" defName
-                    do! line ""
-                    do! line "override x.ToString() = __current.ToString()"
-                    do! line "member private x.AsString = sprintf \"%%A\" __current"
+                                for f in e.FSharpFields do
+                                    let fName = f.DisplayName
+                                    do! line "_%s.Update(__model.%s)" fName fName
+                                do! pop
+                            }
+                            do! line ""
+                            do! line "static member Create(initial) = %s(initial)" defName
+                            do! line ""
+                            do! line "override x.ToString() = __current.ToString()"
+                            do! line "member private x.AsString = sprintf \"%%A\" __current"
 
-                }
+                        }
 
-                do! line ""
-                do! line ""
+                        do! line ""
+                        do! line ""
 
 
-                do! line "[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]"
-                let mModule = scope "module %s =" defName
-                do! mModule {
-                    for (name,_,_) in annotatedFields do
-                        do! line "let inline %s (m : %s) = m.%s" name defName name
-                }
+                        do! line "[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]"
+                        let mModule = scope "module %s =" defName
+                        do! mModule {
+                            for (name,_,_) in annotatedFields do
+                                do! line "let inline %s (m : %s) = m.%s" name defName name
+                        }
 
-                do! line ""
-                do! line ""
+                        do! line ""
+                        do! line ""
 
             elif e.IsFSharpUnion then   
                     
