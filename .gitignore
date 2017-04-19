@@ -8,3 +8,4 @@ obj
 /.fake
 /src/.vs/Aardvark.Compiler.DomainTypes/v14/*.suo
 *.g.fs
+/src/.vs/Aardvark.Compiler.DomainTypes/v15/*.suo
