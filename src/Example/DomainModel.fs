@@ -25,6 +25,9 @@ type Object =
     }
 
 [<DomainType>]
+type Symbol = V2i of int 
+
+[<DomainType>]
 type State =
     {
         [<TreatAsValue>]

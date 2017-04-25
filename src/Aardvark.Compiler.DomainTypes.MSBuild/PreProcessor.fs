@@ -701,6 +701,7 @@ module Preprocessing =
                     do! line "open System"
                     do! line "open Aardvark.Base"
                     do! line "open Aardvark.Base.Incremental"
+                    do! line "open %s" ns
                     do! line ""
                     do! line "[<AutoOpen>]"
                     do! line "module Mutable ="
