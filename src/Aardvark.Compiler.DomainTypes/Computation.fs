@@ -238,3 +238,6 @@ module ThreadPool =
     let start (proc : ProcList<'a, unit>) (p : ThreadPool<'a>) =
         let id = Guid.NewGuid() |> string
         ThreadPool(HMap.add id (LeafCommand(proc) :> Command<_>) p.store)
+
+    let union (l : ThreadPool<'a>) (r : ThreadPool<'a>) =
+        ThreadPool(HMap.union l.store r.store)
