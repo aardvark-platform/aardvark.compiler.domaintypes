@@ -27,9 +27,10 @@
     <DocumentationFile>
     </DocumentationFile>
     <Prefer32Bit>false</Prefer32Bit>
-    <StartArguments>E:\Development\aardvark-compiler-domaintypes\src\Example\Example.fsproj</StartArguments>
+    <StartArguments>C:\Users\steinlechner\Desktop\diffgenerator\src\Example\Example.fsproj</StartArguments>
     <OtherFlags>
     </OtherFlags>
+    <EnableSQLServerDebugging>true</EnableSQLServerDebugging>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>

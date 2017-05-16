@@ -22,10 +22,23 @@ type Object =
         name        : string
         trafo       : Trafo3d
         model       : Model
+        blubber  : MyUnion
     }
 
 [<DomainType>]
 type Symbol = V2i of int 
+
+[<DomainType>]
+type U = {
+    [<PrimaryKey>]
+    id : int 
+  }
+
+[<DomainType>]
+type U2 = { 
+    [<PrimaryKey>]
+    id : int 
+ } // duplcate
 
 [<DomainType>]
 type State =
@@ -40,4 +53,9 @@ type State =
 
 
         threads     : hmap<int, Object>
+
+        testBlub : option<int>
+
+        shouldBeU : hset<U>
     }
+

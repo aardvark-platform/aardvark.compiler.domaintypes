@@ -243,6 +243,7 @@ module Preprocessing =
         let (|Option|_|) (t : FSharpType) =
             match t with
                 | Generic("Option", [a]) -> Some a
+                | Generic("option", [a]) -> Some a
                 | _ -> None
 
         let (|ThreadPool|_|) (t : FSharpType) =
@@ -318,7 +319,7 @@ module Preprocessing =
                     let mutable getKey = "unbox"
                     match tryGetUniqueField t with
                         | Some field ->
-                            getKey <- sprintf "(fun v -> v.%s :> obj)" field
+                            getKey <- sprintf "(fun (v : %s) -> v.%s :> obj)" t.TypeDefinition.FullName field
                         | None ->
                             let range = FSharpType.range t
                             do! warn 4321 range "the domain type %s has no field marked with PrimaryKeyAttribute but is used inside a hset. peformance could suffer. please consider adding a primary key." (FSharpType.prettyName t)

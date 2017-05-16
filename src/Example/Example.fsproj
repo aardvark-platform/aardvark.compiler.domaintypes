@@ -56,7 +56,9 @@
     <Compile Include="DomainModel.fs">
       <DomainTypes>True</DomainTypes>
     </Compile>
+    <Compile Include="DomainModel.g.fs" />
     <Compile Include="DomainModel2.fs" />
+    <Compile Include="DomainModel2.g.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -82,7 +84,7 @@
     </Otherwise>
   </Choose>
   <Import Project="$(FSharpTargetsPath)" />
-  <Import Project="..\..\bin\Debug\Aardvark.Compiler.DomainTypes.targets" />
+  <!--<Import Project="..\..\bin\Debug\Aardvark.Compiler.DomainTypes.targets" />-->
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">
