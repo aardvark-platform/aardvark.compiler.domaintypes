@@ -59,3 +59,9 @@ type State =
         shouldBeU : hset<U>
     }
 
+[<DomainType>]
+type Tree =
+    {
+        name : string
+        id : plist<Tree>
+    }

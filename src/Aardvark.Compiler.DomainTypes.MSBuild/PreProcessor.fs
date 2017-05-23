@@ -305,7 +305,7 @@ module Preprocessing =
                     let tName = FSharpType.mutableNameRef scope t
                     return {
                         aType = Some "alist<_>"
-                        aInit = fun fName -> sprintf "ResetMapList(%s, (fun _ -> %s.Create), fun (m,i) -> m.Update(i))"  fName tName
+                        aInit = fun fName -> sprintf "ResetMapList(%s, (fun _ -> %s.Create), fun (m : %s,i) -> m.Update(i))"  fName tName tName
                     }
 
                 | PList t ->
@@ -326,7 +326,7 @@ module Preprocessing =
                             
                     return {
                         aType = Some "aset<_>"
-                        aInit = fun fName -> sprintf "ResetMapSet(%s, %s, %s.Create, fun (m,i) -> m.Update(i))" getKey fName tName
+                        aInit = fun fName -> sprintf "ResetMapSet(%s, %s, %s.Create, fun (m : %s,i) -> m.Update(i))" getKey fName tName tName
                     }
 
                 | HSet t ->
@@ -339,7 +339,7 @@ module Preprocessing =
                     let tName = FSharpType.mutableNameRef scope t
                     return {
                         aType = Some "amap<_,_>"
-                        aInit = fun fName -> sprintf "ResetMapMap(%s, (fun k v -> %s.Create(v)), (fun (m,i) -> m.Update(i)))" fName tName
+                        aInit = fun fName -> sprintf "ResetMapMap(%s, (fun k v -> %s.Create(v)), (fun (m : %s,i) -> m.Update(i)))" fName tName tName
                     }
 
                 | HMap(k, t) ->
@@ -353,7 +353,7 @@ module Preprocessing =
                     let tName = FSharpType.mutableNameRef scope t
                     return {
                         aType = Some "IMod<_>"
-                        aInit = fun fName -> sprintf "ResetMapOption(%s, %s.Create, fun (m,i) -> m.Update(i))" fName tName
+                        aInit = fun fName -> sprintf "ResetMapOption(%s, %s.Create, fun (m : %s,i) -> m.Update(i))" fName tName tName
                     }
                        
                 | Tuple types ->
