@@ -45,6 +45,10 @@ type State =
     {
         [<TreatAsValue>]
         past        : Option<State>
+
+        [<NonIncremental>]
+        hugo : int
+
         primary     : Option<Object>
         viewTrafo   : Trafo3d
         objects     : hset<Object>

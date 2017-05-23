@@ -435,6 +435,10 @@ module Preprocessing =
 
                             for (fname, _, access) in annotatedFields do
                                 do! line "member x.%s = %s" fname access
+
+                            for f in e.FSharpFields do
+                                if FSharpField.nonIncremental f then
+                                    do! line "member x.%s = __initial.%s" f.DisplayName f.DisplayName
                     
                             do! line ""
 
@@ -446,8 +450,9 @@ module Preprocessing =
                                 do! line "__current <- __model"
                 
                                 for f in e.FSharpFields do
-                                    let fName = f.DisplayName
-                                    do! line "_%s.Update(__model.%s)" fName fName
+                                    if not (FSharpField.nonIncremental f) then
+                                        let fName = f.DisplayName
+                                        do! line "_%s.Update(__model.%s)" fName fName
                                 do! pop
                             }
                             do! line ""
