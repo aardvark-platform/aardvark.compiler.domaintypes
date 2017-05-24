@@ -7,5 +7,5 @@ open DomainModel
 [<DomainType>]
 type Model2 =
     {
-        fm : State
+        fm : int * State
     }

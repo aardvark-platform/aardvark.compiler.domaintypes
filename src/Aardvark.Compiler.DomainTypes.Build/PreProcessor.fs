@@ -122,6 +122,9 @@ module Preprocessing =
                     | _ ->
                         let targs = targs |> List.map immutableName |> String.concat ", " |> sprintf "<%s>"
                         qualifiedName + targs
+
+            elif e.IsTupleType then
+                e.GenericArguments |> Seq.map immutableName |> String.concat " * "
             else
                 failwithf "[Domain] no definition for %A" e 
 
@@ -191,6 +194,7 @@ module Preprocessing =
 
     [<AutoOpen>]
     module Patterns =
+
         let (|DomainType|_|) (t : FSharpType) =
             if FSharpType.isDomainType t then 
                 let def = t.TypeDefinition
@@ -285,13 +289,13 @@ module Preprocessing =
 
     type Adapter =
         {
-            aType : Option<string>
-            aInit : string -> string
+            aUpcast     : string -> string
+            aInit       : string -> string
         }
 
     let valueAdapter =
         {
-            aType = Some "IMod<_>"
+            aUpcast = fun v -> v + " :> IMod<_>"
             aInit = sprintf "ResetMod(%s)"
         }
              
@@ -299,7 +303,7 @@ module Preprocessing =
         member x.CleanName = x.Name.ToLower()
       
 
-    let generateAdapter (t : FSharpType) =
+    let rec generateAdapter (t : FSharpType) =
         codegen {
             let! scope = CodeGen.currentScope
 
@@ -308,13 +312,13 @@ module Preprocessing =
                     let tName = FSharpType.mutableNameRef scope t
                     
                     return {
-                        aType = Some "alist<_>"
+                        aUpcast = fun v -> v + " :> alist<_>"
                         aInit = fun fName -> sprintf "ResetMapList(%s, (fun _ -> %s.Create), %s.Update)"  fName tName tName
                     }
 
                 | PList t ->
                     return {
-                        aType = Some "alist<_>"
+                        aUpcast = fun v -> v + " :> alist<_>"
                         aInit = sprintf "ResetList(%s)"
                     }
 
@@ -330,13 +334,13 @@ module Preprocessing =
                  
 
                     return {
-                        aType = Some "aset<_>"
+                        aUpcast = fun v -> v + " :> aset<_>"
                         aInit = fun fName -> sprintf "ResetMapSet(%s, %s, %s.Create, %s.Update)" getKey fName tName tName
                     }
 
                 | HSet t ->
                     return {
-                        aType = Some "aset<_>"
+                        aUpcast = fun v -> v + " :> aset<_>"
                         aInit = fun fName -> sprintf "ResetSet(%s)" fName
                     }
 
@@ -345,13 +349,13 @@ module Preprocessing =
 
      
                     return {
-                        aType = Some "amap<_,_>"
+                        aUpcast = fun v -> v + " :> amap<_,_>"
                         aInit = fun fName -> sprintf "ResetMapMap(%s, (fun k v -> %s.Create(v)), %s.Update)" fName tName tName
                     }
 
                 | HMap(k, t) ->
                     return {
-                        aType = Some "amap<_,_>"
+                        aUpcast = fun v -> v + " :> amap<_,_>"
                         aInit = fun fName -> sprintf "ResetMap(%s)" fName
                     }
 
@@ -361,7 +365,7 @@ module Preprocessing =
 
 
                     return {
-                        aType = Some "IMod<_>"
+                        aUpcast = fun v -> v + " :> IMod<_>"
                         aInit = fun fName -> sprintf "ResetMapOption(%s, %s.Create, %s.Update)" fName tName tName
                     }
                        
@@ -369,20 +373,29 @@ module Preprocessing =
                     let allDomain = types |> List.forall FSharpType.isDomainType
                     let noDomain = types |> List.forall (not << FSharpType.isDomainType)
 
-                    if allDomain then
-                        return! error 5432 Range.range0 "domain tuples not implemented"
+                    let! adapters = types |> List.mapC generateAdapter
 
-                    elif noDomain then
-                        return valueAdapter
+                    let names = adapters |> List.mapi (fun i _ -> sprintf "__item%d" i)
+                    let def = String.concat "," names
+                    let ref = List.map2 (fun a n -> a.aUpcast n) adapters names |> String.concat ","
+                    let init = List.map2 (fun a n -> a.aInit n) adapters names |> String.concat ","
 
-                    else
-                        return! error 5432 Range.range0  "mixed tuples not implemented"
-                    
+                    let upcaster (name : string) =
+                        sprintf "let (%s) = %s in (%s)" def name ref
+
+                    let init (name : string) =
+                        sprintf "let (%s) = %s in (%s)" def name init
+                        
+
+                    return {
+                        aUpcast = upcaster
+                        aInit = init 
+                    }
 
                 | DomainType t ->
                     let mName = FSharpType.mutableNameRef scope t
                     return {
-                        aType = None
+                        aUpcast = id
                         aInit = sprintf "%s.Create(%s)" mName
                     }
 
@@ -391,6 +404,26 @@ module Preprocessing =
                     return valueAdapter
              
         }
+
+    let updateExpression (t : FSharpType) (mname : string) (iname : string) =
+        let rec update (prefix : string) (t : FSharpType) (mname : string) (iname : string) =
+            codegen {
+                match t with
+                    | Tuple types ->
+                        let inames = types |> List.mapi (fun i _ -> sprintf "%s__v%d" prefix i)
+                        let mnames = types |> List.mapi (fun i _ -> sprintf "%s__m%d" prefix i)
+
+                        do! line "let (%s) = %s" (String.concat "," inames) iname
+                        do! line "let (%s) = %s" (String.concat "," mnames) mname
+
+                        for (t,m,i) in List.zip3 types mnames inames do
+                            do! update m t m i
+
+                    | _ ->
+                        do! line "%s.Update(%s)" mname iname
+            }
+
+        update "" t mname iname
 
     let generateMutableType (e : FSharpEntity) =
         codegen {
@@ -419,10 +452,7 @@ module Preprocessing =
                                     let inputName = sprintf "__initial.%s" f.DisplayName
                                     let init = sprintf "let _%s = %s" f.DisplayName (adapter.aInit inputName)
 
-                                    let access =
-                                        match adapter.aType with
-                                            | Some t -> sprintf "_%s :> %s" f.DisplayName t
-                                            | None -> sprintf "_%s" f.DisplayName
+                                    let access = adapter.aUpcast ("_" + f.DisplayName)
 
                                     return Some (f.DisplayName, init, access)
                             }
@@ -463,7 +493,22 @@ module Preprocessing =
                                 for f in e.FSharpFields do
                                     if not (FSharpField.nonIncremental f) then
                                         let fName = f.DisplayName
-                                        do! line "_%s.Update(__model.%s)" fName fName
+
+                                        do! updateExpression f.FieldType ("_" + fName) ("__model." + fName)
+
+//                                        match f.FieldType with
+//                                            | Tuple types ->
+//                                                let inames = types |> List.mapi (fun i _ -> sprintf "__v%d" i)
+//                                                let mnames = types |> List.mapi (fun i _ -> sprintf "__m%d" i)
+//
+//                                                do! line "let (%s) = __model.%s" (String.concat "," inames) fName
+//                                                do! line "let (%s) = _%s" (String.concat "," mnames) fName
+//
+//                                                for (m,i) in List.zip mnames inames do
+//                                                    do! line "%s.Update(%s)" m i
+//
+//                                            | _ ->
+//                                                do! line "_%s.Update(__model.%s)" fName fName
                                 do! pop
                             }
                             do! line ""
@@ -566,9 +611,8 @@ module Preprocessing =
                                 
                                 
                         for (f, adapter) in annotatedFields do
-                            match adapter.aType with
-                                | Some t -> do! line "member x.%s = _%s :> %s" f.CleanName f.CleanName t
-                                | None -> do! line "member x.%s = _%s" f.CleanName f.CleanName 
+                            let access = adapter.aUpcast ("_" + f.CleanName)
+                            do! line "member x.%s = %s" f.CleanName access
                                         
                         do! line ""
                         do! line "override x.ToString() = __current.ToString()"
@@ -593,7 +637,23 @@ module Preprocessing =
                             do! push
                             do! line "__current <- __model"
                             for (f,a) in annotatedFields do
-                                do! line "_%s.Update(%s)" f.CleanName f.CleanName
+                                let fName = f.CleanName
+
+                                do! updateExpression f.FieldType ("_" + fName) fName
+//
+//                                match f.FieldType with
+//                                    | Tuple types ->
+//                                        let inames = types |> List.mapi (fun i _ -> sprintf "__v%d" i)
+//                                        let mnames = types |> List.mapi (fun i _ -> sprintf "__m%d" i)
+//
+//                                        do! line "let (%s) = %s" (String.concat "," inames) fName
+//                                        do! line "let (%s) = _%s" (String.concat "," mnames) fName
+//
+//                                        for (m,i) in List.zip mnames inames do
+//                                            do! line "%s.Update(%s)" m i
+//
+//                                    | _ ->
+//                                        do! line "_%s.Update(%s)" fName fName
                             do! line "true"
                             do! pop
 
@@ -642,6 +702,7 @@ module Preprocessing =
 
         }
     
+
     let generateLenses (e : FSharpEntity) =
         codegen {
             let eType = FSharpEntity.immutableName e
