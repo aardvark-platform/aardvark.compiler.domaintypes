@@ -6,6 +6,7 @@ description
 dependencies
 	Aardvark.Compiler.DomainTypes = CURRENTVERSION
 files
+    ..\..\bin\Release\Aardvark.Compiler.DomainTypes.Build.dll ==> build
     ..\..\bin\Release\Aardvark.Compiler.DomainTypes.MSBuild.dll ==> build
     ..\..\bin\Release\Aardvark.Compiler.DomainTypes.targets ==> build
 	..\..\bin\Release\FSharp.Compiler.Service.dll ==> build

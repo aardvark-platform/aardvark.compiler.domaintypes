@@ -20,6 +20,7 @@ type Object =
     {
         [<PrimaryKey>]
         name        : string
+        sepp        : string
         trafo       : Trafo3d
         model       : Model
         blubber  : MyUnion

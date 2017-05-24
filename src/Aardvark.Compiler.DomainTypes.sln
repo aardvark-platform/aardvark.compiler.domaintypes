@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.25420.1
+# Visual Studio 15
+VisualStudioVersion = 15.0.26430.4
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Aardvark.Compiler.DomainTypes.MSBuild", "Aardvark.Compiler.DomainTypes.MSBuild\Aardvark.Compiler.DomainTypes.MSBuild.fsproj", "{378DF51A-1C31-4AF4-ACED-9CFB5C1252E9}"
 EndProject
@@ -10,6 +10,8 @@ EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Aardvark.Compiler.DomainTypeTool", "Aardvark.Compiler.DomainTypeTool\Aardvark.Compiler.DomainTypeTool.fsproj", "{D8A9B8C7-1416-4EF8-B46D-96B37C64A134}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Aardvark.Compiler.DomainTypes", "Aardvark.Compiler.DomainTypes\Aardvark.Compiler.DomainTypes.fsproj", "{5E1B8A75-6C05-41E6-84F1-A0D6B4CD2B32}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Aardvark.Compiler.DomainTypes.Build", "Aardvark.Compiler.DomainTypes.Build\Aardvark.Compiler.DomainTypes.Build.fsproj", "{0CD18EC9-3614-46C3-9B5D-7AA5BAB32171}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -33,6 +35,10 @@ Global
 		{5E1B8A75-6C05-41E6-84F1-A0D6B4CD2B32}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5E1B8A75-6C05-41E6-84F1-A0D6B4CD2B32}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5E1B8A75-6C05-41E6-84F1-A0D6B4CD2B32}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0CD18EC9-3614-46C3-9B5D-7AA5BAB32171}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0CD18EC9-3614-46C3-9B5D-7AA5BAB32171}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0CD18EC9-3614-46C3-9B5D-7AA5BAB32171}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0CD18EC9-3614-46C3-9B5D-7AA5BAB32171}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
