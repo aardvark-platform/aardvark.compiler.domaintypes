@@ -23,7 +23,7 @@ type Object =
         sepp        : string
         trafo       : Trafo3d
         model       : Model
-        blubber  : MyUnion
+        blubber     : plist<MyUnion>
     }
 
 [<DomainType>]

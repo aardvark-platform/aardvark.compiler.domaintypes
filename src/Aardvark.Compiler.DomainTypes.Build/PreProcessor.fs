@@ -192,8 +192,11 @@ module Preprocessing =
     [<AutoOpen>]
     module Patterns =
         let (|DomainType|_|) (t : FSharpType) =
-            if FSharpType.isDomainType t then Some t
-            else None
+            if FSharpType.isDomainType t then 
+                let def = t.TypeDefinition
+                Some (t)
+            else 
+                None
 
         let (|GenericAccessPath|_|) (t : FSharpType) =
             if t.HasTypeDefinition then
@@ -303,9 +306,10 @@ module Preprocessing =
             match t with
                 | PList (DomainType t) ->
                     let tName = FSharpType.mutableNameRef scope t
+                    
                     return {
                         aType = Some "alist<_>"
-                        aInit = fun fName -> sprintf "ResetMapList(%s, (fun _ -> %s.Create), fun (m : %s,i) -> m.Update(i))"  fName tName tName
+                        aInit = fun fName -> sprintf "ResetMapList(%s, (fun _ -> %s.Create), %s.Update)"  fName tName tName
                     }
 
                 | PList t ->
@@ -323,10 +327,11 @@ module Preprocessing =
                         | None ->
                             let range = FSharpType.range t
                             do! warn 4321 range "the domain type %s has no field marked with PrimaryKeyAttribute but is used inside a hset. peformance could suffer. please consider adding a primary key." (FSharpType.prettyName t)
-                            
+                 
+
                     return {
                         aType = Some "aset<_>"
-                        aInit = fun fName -> sprintf "ResetMapSet(%s, %s, %s.Create, fun (m : %s,i) -> m.Update(i))" getKey fName tName tName
+                        aInit = fun fName -> sprintf "ResetMapSet(%s, %s, %s.Create, %s.Update)" getKey fName tName tName
                     }
 
                 | HSet t ->
@@ -337,9 +342,11 @@ module Preprocessing =
 
                 | HMap(k, DomainType t) ->
                     let tName = FSharpType.mutableNameRef scope t
+
+     
                     return {
                         aType = Some "amap<_,_>"
-                        aInit = fun fName -> sprintf "ResetMapMap(%s, (fun k v -> %s.Create(v)), (fun (m : %s,i) -> m.Update(i)))" fName tName tName
+                        aInit = fun fName -> sprintf "ResetMapMap(%s, (fun k v -> %s.Create(v)), %s.Update)" fName tName tName
                     }
 
                 | HMap(k, t) ->
@@ -351,9 +358,11 @@ module Preprocessing =
             
                 | Option (DomainType t) ->
                     let tName = FSharpType.mutableNameRef scope t
+
+
                     return {
                         aType = Some "IMod<_>"
-                        aInit = fun fName -> sprintf "ResetMapOption(%s, %s.Create, fun (m : %s,i) -> m.Update(i))" fName tName tName
+                        aInit = fun fName -> sprintf "ResetMapOption(%s, %s.Create, %s.Update)" fName tName tName
                     }
                        
                 | Tuple types ->
@@ -424,6 +433,7 @@ module Preprocessing =
                         ()
                     | _ ->
                         do! line "[<StructuredFormatDisplay(\"{AsString}\")>]"
+                        do! line "[<System.Runtime.CompilerServices.Extension>]"
                         let typeDef = scope "type %s private(__initial : %s) =" defName immutableName
                         do! typeDef {
                             do! line "let mutable __current = __initial"
@@ -442,6 +452,7 @@ module Preprocessing =
                     
                             do! line ""
 
+                            
                             let apply = scope "member x.Update(__model : %s) =" immutableName
                             do! apply {
                                 do! line "if not (Object.ReferenceEquals(__model, __current)) then"
@@ -455,6 +466,8 @@ module Preprocessing =
                                         do! line "_%s.Update(__model.%s)" fName fName
                                 do! pop
                             }
+                            do! line ""
+                            do! line "static member Update(__self : %s, __model : %s) = __self.Update(__model)" defName immutableName
                             do! line ""
                             do! line "static member Create(initial) = %s(initial)" defName
                             do! line ""
