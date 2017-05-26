@@ -28,7 +28,7 @@ type PreprocessingResult<'a> =
 
 
 
-module rec TypeTree =
+module TypeTree =
 
     [<AutoOpen>]
     module private Utilities =
@@ -140,6 +140,100 @@ module rec TypeTree =
             
             String.concat "." (strip s all)
 
+    and TypeRef = 
+        | GenericParameter of name : string
+        | Reference of def : TypeDef * targs : array<TypeRef>
+        | Tuple of list<TypeRef>
+        | Array of TypeRef with
+
+            member x.genericParameters =
+                match x with
+                    | Reference(def, targs) -> targs |> Seq.map (fun t -> t.genericParameters) |> Set.unionMany
+                    | GenericParameter p -> Set.singleton p
+                    | Tuple ts -> ts |> List.map (fun t -> t.genericParameters) |> Set.unionMany
+                    | Array t -> t.genericParameters
+
+            member x.fullName (scope : string) = 
+                match x with
+                    | GenericParameter n ->
+                        sprintf "'%s" n
+
+                    | Reference(def,targs) ->
+                        let dn = def.fullName scope
+                        if targs.Length > 0 then
+                            let targs = targs |> Seq.map (fun t -> t.fullName scope) |> String.concat ","
+                            sprintf "%s<%s>" dn targs
+                        else
+                            dn
+                    | Tuple types ->
+                        let types = types |> Seq.map (fun t -> t.fullName scope) |> String.concat " * "
+                        sprintf "(%s)" types
+
+                    | Array t ->
+                        let n = t.fullName scope
+                        sprintf "%s[]" n
+
+            member x.name (scope : string) =
+                match x with
+                    | GenericParameter n ->
+                        sprintf "'%s" n
+
+                    | Reference(def,targs) ->
+                        let dn = def.name
+                        if targs.Length > 0 then
+                            let targs = targs |> Seq.map (fun t -> t.fullName scope) |> String.concat ","
+                            sprintf "%s<%s>" dn targs
+                        else
+                            dn
+                    | Tuple types ->
+                        let types = types |> Seq.map (fun t -> t.fullName scope) |> String.concat " * "
+                        sprintf "(%s)" types
+
+                    | Array t ->
+                        let n = t.fullName scope
+                        sprintf "%s[]" n
+            
+            member x.ContainsGenericParameter =
+                match x with
+                    | Array t -> t.ContainsGenericParameter
+                    | Tuple ts -> ts |> List.exists (fun t -> t.ContainsGenericParameter)
+                    | Reference(_,ts) -> ts |> Array.exists (fun t -> t.ContainsGenericParameter)
+                    | GenericParameter _ -> true
+ 
+    and Field =
+        {
+            name            : string
+            fieldType       : TypeRef
+            description     : DomainTypeDescription
+            nonIncremental  : bool
+            treatAsValue    : bool
+        }
+
+    and UnionCase =
+        {
+            caseName : string
+            fields : list<Field>
+        }
+
+    and DomainTypeDescription =
+        {
+            aSimple     : bool
+            aType       : TypeRef
+            aInit       : string -> string -> string
+            aUpdate     : string -> string -> string -> string
+            aView       : string -> string -> string
+        }
+
+
+    module private Injected =
+        let mutable internal injectedOfTypeRef : (TypeRef -> unit) -> Map<string, bool> -> bool -> TypeRef -> DomainTypeDescription =
+            Unchecked.defaultof<_>
+
+        let mutable internal injectedOfFSharpField : (TypeRef -> unit) -> Map<string, bool> -> FSharpField -> Field =
+            Unchecked.defaultof<_>
+            
+        
+
     [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
     module TypeDef =
         let inline kind (t : TypeDef) = t.kind
@@ -237,69 +331,9 @@ module rec TypeTree =
                 )
 
             if isNew && result.kind = Persistent then
-                result.fields <- d.FSharpFields |> Seq.toList |> List.map (Field.ofFSharpField needPrimaryKey simple)
+                result.fields <- d.FSharpFields |> Seq.toList |> List.map (Injected.injectedOfFSharpField needPrimaryKey simple)
             result
 
-    type TypeRef = 
-        | GenericParameter of name : string
-        | Reference of def : TypeDef * targs : array<TypeRef>
-        | Tuple of list<TypeRef>
-        | Array of TypeRef with
-
-            member x.genericParameters =
-                match x with
-                    | Reference(def, targs) -> targs |> Seq.map (fun t -> t.genericParameters) |> Set.unionMany
-                    | GenericParameter p -> Set.singleton p
-                    | Tuple ts -> ts |> List.map (fun t -> t.genericParameters) |> Set.unionMany
-                    | Array t -> t.genericParameters
-
-            member x.fullName (scope : string) = 
-                match x with
-                    | GenericParameter n ->
-                        sprintf "'%s" n
-
-                    | Reference(def,targs) ->
-                        let dn = def.fullName scope
-                        if targs.Length > 0 then
-                            let targs = targs |> Seq.map (fun t -> t.fullName scope) |> String.concat ","
-                            sprintf "%s<%s>" dn targs
-                        else
-                            dn
-                    | Tuple types ->
-                        let types = types |> Seq.map (fun t -> t.fullName scope) |> String.concat " * "
-                        sprintf "(%s)" types
-
-                    | Array t ->
-                        let n = t.fullName scope
-                        sprintf "%s[]" n
-
-            member x.name (scope : string) =
-                match x with
-                    | GenericParameter n ->
-                        sprintf "'%s" n
-
-                    | Reference(def,targs) ->
-                        let dn = def.name
-                        if targs.Length > 0 then
-                            let targs = targs |> Seq.map (fun t -> t.fullName scope) |> String.concat ","
-                            sprintf "%s<%s>" dn targs
-                        else
-                            dn
-                    | Tuple types ->
-                        let types = types |> Seq.map (fun t -> t.fullName scope) |> String.concat " * "
-                        sprintf "(%s)" types
-
-                    | Array t ->
-                        let n = t.fullName scope
-                        sprintf "%s[]" n
-            
-            member x.ContainsGenericParameter =
-                match x with
-                    | Array t -> t.ContainsGenericParameter
-                    | Tuple ts -> ts |> List.exists (fun t -> t.ContainsGenericParameter)
-                    | Reference(_,ts) -> ts |> Array.exists (fun t -> t.ContainsGenericParameter)
-                    | GenericParameter _ -> true
- 
     [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
     module TypeRef =
 
@@ -368,33 +402,23 @@ module rec TypeTree =
                 | _ -> None
 
 
-    type Field =
-        {
-            name            : string
-            fieldType       : TypeRef
-            description     : DomainTypeDescription
-            nonIncremental  : bool
-            treatAsValue    : bool
-        }
 
     [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
     module Field =
+
         let ofFSharpField (needPrimaryKey : TypeRef -> unit) (simple : Map<string, bool>) (f : FSharpField) =
             let t = TypeRef.ofFSharpType needPrimaryKey simple f.FieldType
             {
                 name            = f.DisplayName
                 fieldType       = t
-                description     = DomainTypeDescription.ofTypeRef needPrimaryKey simple false t
+                description     = Injected.injectedOfTypeRef needPrimaryKey simple false t
                 nonIncremental  = FSharpField.isNonIncremental f
                 treatAsValue    = FSharpField.treatAsValue f
             }
 
+        do Injected.injectedOfFSharpField <- ofFSharpField
 
-    type UnionCase =
-        {
-            caseName : string
-            fields : list<Field>
-        }
+
 
     [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
     module UnionCase =
@@ -405,15 +429,6 @@ module rec TypeTree =
             }
         
 
-
-    type DomainTypeDescription =
-        {
-            aSimple     : bool
-            aType       : TypeRef
-            aInit       : string -> string -> string
-            aUpdate     : string -> string -> string -> string
-            aView       : string -> string -> string
-        }
 
     [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
     module DomainTypeDescription =
@@ -643,6 +658,8 @@ module rec TypeTree =
                                 aUpdate = fun _ -> sprintf "ResetMod.Update(%s,%s)"
                                 aView = fun _ -> sprintf "%s :> IMod<_>"
                             }
+
+        do Injected.injectedOfTypeRef <- ofTypeRef
 
 module PreprocessingNew =
     open TypeTree
