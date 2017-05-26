@@ -26,7 +26,7 @@ open DomainModel2
 let main argv =
     let s : MMyState = failwith ""
 
-    let v = s.intTree
+    let v = s.blubber
 
     let rec ft (n : MNode<MThing, MThing>) =
         alist {

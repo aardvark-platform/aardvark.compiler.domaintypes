@@ -27,6 +27,7 @@ type PreprocessingResult<'a> =
     | Worked of Map<string, FileProcessingResult<'a>>
 
 
+
 module rec TypeTree =
 
     [<AutoOpen>]
@@ -781,7 +782,7 @@ module PreprocessingNew =
                         // declare the members
                         for f in fields do
                             if f.nonIncremental then
-                                do! line "override x.%s = _%s" f.name f.name
+                                do! line "override x.%s = __initial.%s" f.name f.name
                             elif f.treatAsValue then
                                 do! line "override x.%s = _%s :> IMod<_>" f.name f.name
                             else
@@ -882,7 +883,7 @@ module PreprocessingNew =
                     // declare the members
                     for f in fields do
                         if f.nonIncremental then
-                            do! line "member x.%s = _%s" f.name f.name
+                            do! line "member x.%s = __initial.%s" f.name f.name
                         elif f.treatAsValue then
                             do! line "member x.%s = _%s :> IMod<_>" f.name f.name
                         else
