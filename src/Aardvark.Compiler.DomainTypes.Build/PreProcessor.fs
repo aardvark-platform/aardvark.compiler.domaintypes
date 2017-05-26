@@ -133,9 +133,10 @@ module TypeTree =
                 match p, n with
                     | ph :: pt, nh :: nt ->
                         if ph = nh then strip pt nt
-                        else n
+                        else all
+                    | [], n -> n
 
-                    | _ -> n
+                    | _ -> all
 
             
             String.concat "." (strip s all)
