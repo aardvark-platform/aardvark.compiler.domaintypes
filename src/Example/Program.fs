@@ -22,11 +22,45 @@ open DomainModel2
 
 //    ()
 
+type DomNode private(tag : string, content : Either<IMod<string>, alist<DomNode>>) =
+    member x.Children = content
+    member x.Tag = tag
+
+    new(tag : string, content : IMod<string>) = DomNode(tag, Left content)
+    new(tag : string, content : alist<DomNode>) = DomNode(tag, Right content)
+
+
+let treeView (view : 'a -> DomNode) (t : MTree<'a, _>) =
+    
+    let rec nodeView (n : MNode<'a, _>) =
+        DomNode(
+            "li",
+            AList.ofList [
+                view n.value
+                DomNode(
+                    "ul",
+                    n.children |> AList.map nodeView
+                )
+            ]
+        )
+
+    DomNode(
+        "ul",
+        t.roots |> AList.map nodeView
+    )
+
+
 [<EntryPoint>]
 let main argv =
     let s : MMyState = failwith ""
 
     let v = s.blubber
+
+    let intView = 
+        s.intTree |> treeView (fun v -> DomNode("span", Mod.map string v))
+
+    let thingView = 
+        s.tree |> treeView (fun v -> DomNode("span", v.name))
 
     let rec ft (n : MNode<MThing, MThing>) =
         alist {

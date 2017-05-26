@@ -245,6 +245,14 @@ module rec TypeTree =
         | Reference of def : TypeDef * targs : array<TypeRef>
         | Tuple of list<TypeRef>
         | Array of TypeRef with
+
+            member x.genericParameters =
+                match x with
+                    | Reference(def, targs) -> targs |> Seq.map (fun t -> t.genericParameters) |> Set.unionMany
+                    | GenericParameter p -> Set.singleton p
+                    | Tuple ts -> ts |> List.map (fun t -> t.genericParameters) |> Set.unionMany
+                    | Array t -> t.genericParameters
+
             member x.fullName (scope : string) = 
                 match x with
                     | GenericParameter n ->
