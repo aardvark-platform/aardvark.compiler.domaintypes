@@ -40,3 +40,9 @@ type Id() =
     let id = Interlocked.Increment(&current)
     static member New = Id()
     override x.ToString() = sprintf "Id %d" id
+
+
+
+
+
+

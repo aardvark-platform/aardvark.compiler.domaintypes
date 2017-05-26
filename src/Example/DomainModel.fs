@@ -2,7 +2,7 @@
 
 open Aardvark.Base
 open Aardvark.Base.Incremental
-
+(*
 type Model =
     {
         fileName    : string
@@ -69,4 +69,4 @@ type Tree =
     {
         name : string
         id : plist<Tree>
-    }
+    }*)
