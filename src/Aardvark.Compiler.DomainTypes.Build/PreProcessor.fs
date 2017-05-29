@@ -105,10 +105,12 @@ module TypeTree =
             mutable fields : list<Field>
         } with
         
-        override x.GetHashCode() = (x.fullName "").GetHashCode()
+        override x.GetHashCode() = 
+            (x.fullName "" + "`" + string x.tpars.Length).GetHashCode() 
+
         override x.Equals(o) = 
             match o with
-                | :? TypeDef as o -> x.fullName "" = o.fullName ""
+                | :? TypeDef as o -> x.fullName "" = o.fullName "" && x.tpars.Length = o.tpars.Length
                 | _ -> false
 
         member x.IsGeneric = x.tpars.IsEmpty |> not
