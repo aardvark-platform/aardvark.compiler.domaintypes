@@ -718,6 +718,7 @@ module PreprocessingNew =
 
         }
 
+
     let generateMutableType (e : FSharpEntity) =
         codegen {
             let! currentScope = CodeGen.currentScope
@@ -733,10 +734,11 @@ module PreprocessingNew =
                 let iTypeRef = 
                     typeDef |> TypeDef.instantiate (List.map GenericParameter ipars)
 
-                if typeDef.IsGeneric then
-                    let genFields = typeDef.fields
-                    let fpars = ipars |> List.collect (fun v -> ["v" + v; "n" + v]) //genFields |> List.choose (fun (g,f) -> if g then Some f.name else None)
+                let genFields = typeDef.fields
+                let fpars = ipars |> List.collect (fun v -> ["v" + v; "n" + v]) //genFields |> List.choose (fun (g,f) -> if g then Some f.name else None)
                         
+                // if the type is generic we need a base-type for our implementations
+                if typeDef.IsGeneric then
                     do! line "[<AbstractClass; StructuredFormatDisplay(\"{AsString}\")>]"
                     let margs = fpars |> Seq.map (sprintf "'%s") |> String.concat ","
                     do! line "type M%s<%s>() = " typeDef.name margs
@@ -746,153 +748,69 @@ module PreprocessingNew =
 
                     do! line "abstract member AsString : string"
                     do! pop
-                    do! line ""
-                    do! line ""
 
-                    let creators = System.Collections.Generic.List<string>()
+                do! line ""
+                do! line ""
 
-                    for ass in simpleOrNot ipars do
-                        let map = Map.ofList ass
+                let creators = System.Collections.Generic.List<string>()
+
+                for ass in simpleOrNot ipars do
+                    let map = Map.ofList ass
                         
-                        let fields =
-                            let typeDef = TypeDef.ofFSharpDefinition needPrimaryKey map e
-                            typeDef.fields
+                    let fields =
+                        let typeDef = TypeDef.ofFSharpDefinition needPrimaryKey map e
+                        typeDef.fields
 
-                        let suffix = ass |> List.map (fun (_,s) -> if s then "V" else "D") |> String.concat ""
+                    let suffix = ass |> List.map (fun (_,s) -> if s then "V" else "D") |> String.concat ""
 
-                        let baseArgs =
-                            ass |> List.collect (fun (t,s) ->
-                                if s then [ sprintf "IMod<'%s>" t; "'" + t ]
-                                else [ "'v" + t; "'v" + t ]
-                            )
+                    let baseArgs =
+                        ass |> List.collect (fun (t,s) ->
+                            if s then [ sprintf "IMod<'%s>" t; "'" + t ]
+                            else [ "'v" + t; "'v" + t ]
+                        )
 
-                        let pars =
-                            ipars |> List.collect (fun p ->
-                                if map.[p] then [p]
-                                else [p; "m" + p; "v" + p]
-                            )
+                    let pars =
+                        ipars |> List.collect (fun p ->
+                            if map.[p] then [p]
+                            else [p; "m" + p; "v" + p]
+                        )
 
-                        let args =
-                            [
-                                yield "__initial", iTypeRef.fullName currentScope
-                                for p in ipars do
-                                    if not map.[p] then
-                                        yield sprintf "__%sinit" p, sprintf "'%s -> 'm%s" p p
-                                        yield sprintf "__%supdate" p, sprintf "'m%s * '%s -> unit" p p
-                                        yield sprintf "__%sview" p, sprintf "'m%s -> 'v%s" p p
-                            ]
+                    let args =
+                        [
+                            yield "__initial", iTypeRef.fullName currentScope
+                            for p in ipars do
+                                if not map.[p] then
+                                    yield sprintf "__%sinit" p, sprintf "'%s -> 'm%s" p p
+                                    yield sprintf "__%supdate" p, sprintf "'m%s * '%s -> unit" p p
+                                    yield sprintf "__%sview" p, sprintf "'m%s -> 'v%s" p p
+                        ]
 
-                        let argDef = args |> List.map (fun (n,t) -> sprintf "%s : %s" n t) |> String.concat ", "
-                        let argRef = args |> List.map fst |> String.concat ", "
+                    let argDef = args |> List.map (fun (n,t) -> sprintf "%s : %s" n t) |> String.concat ", "
+                    let argRef = args |> List.map fst |> String.concat ", "
 
-                        let selfName = sprintf "M%s%s<%s>" typeDef.name suffix (pars |> List.map (sprintf "'%s") |> String.concat ",")
-                        let baseName = sprintf "M%s<%s>" typeDef.name (baseArgs |> String.concat ",")
+                    let selfName = 
+                        match pars with
+                            | [] -> "M" + typeDef.name
+                            | _ -> sprintf "M%s%s<%s>" typeDef.name suffix (pars |> List.map (sprintf "'%s") |> String.concat ",")
+                    let baseName = 
+                        match pars with
+                            | [] -> "obj"
+                            | _ -> sprintf "M%s<%s>" typeDef.name (baseArgs |> String.concat ",")
 
-                        do! line "and private %s(%s) =" selfName argDef
-                        do! push
-                        do! line "inherit %s()" baseName
+                    let typePrefix =
+                        match pars with
+                            | [] ->  "type"
+                            | _ -> "and private"
+
+                    let mem =
+                        match pars with
+                            | [] -> "member"
+                            | _ -> "override"
+
+                    do! line "%s %s(%s) =" typePrefix selfName argDef
+                    do! push
+                    do! line "inherit %s()" baseName
      
-                        do! line "let mutable __current = __initial"
-
-                        // declare all the fields
-                        for f in fields do
-                            let i = sprintf "__initial.%s" f.name
-                            if not f.nonIncremental then
-                                if f.treatAsValue then
-                                    do! line "let _%s = ResetMod.Create(%s)" f.name i
-                                else
-                                    do! line "let _%s = %s" f.name (f.description.aInit currentScope i)
-
-                        do! line ""                   
-                        
-                        // declare the members
-                        for f in fields do
-                            if f.nonIncremental then
-                                do! line "override x.%s = __initial.%s" f.name f.name
-                            elif f.treatAsValue then
-                                do! line "override x.%s = _%s :> IMod<_>" f.name f.name
-                            else
-                                let name = sprintf "_%s" f.name
-                                do! line "override x.%s = %s" f.name (f.description.aView currentScope name)
-                            
-                        do! line ""
-    
-    
-                        // define the update function
-                        do! line "member x.Update(v : %s) =" (iTypeRef.fullName currentScope)
-                        do! push
-                        do! line "if not (System.Object.ReferenceEquals(__current, v)) then"
-                        do! push
-                        do! line "__current <- v"
-                        do! line ""
-
-                        for f in fields do
-                            if f.nonIncremental then ()
-                            elif f.treatAsValue then
-                                do! line "_%s.Update(v.%s)" f.name f.name
-                            else
-                                let m = sprintf "_%s" f.name
-                                let v = sprintf "v.%s" f.name
-
-                                let code = f.description.aUpdate currentScope m v
-                                for l in code.Split([|"\r\n"|], StringSplitOptions.RemoveEmptyEntries) do
-                                    do! line "%s" l
-
-                        do! line ""
-                        do! pop
-                        do! pop
-                    
-
-                        do! line ""
-
-                        let ctargs = pars |> List.map (sprintf "'%s") |> String.concat ","
-                        let creator = sprintf "static member Create<%s>(%s) : %s = %s(%s) :> %s" ctargs argDef baseName selfName argRef baseName
-                        creators.Add creator
-
-                        do! line "static member Update(m : %s, v : %s) = m.Update(v)" selfName (iTypeRef.fullName currentScope)
-                        do! line ""
-                        do! line "override x.ToString() = __current.ToString()"
-                        do! line "override x.AsString = sprintf \"%%A\" __current"
-
-                        do! line "interface IUpdatable<%s> with" (iTypeRef.fullName currentScope)
-                        do! push
-                        do! line "member x.Update v = x.Update v"
-                        do! pop
-
-                        do! pop
-                        do! line ""
-                        
-                    do! line "and [<AbstractClass; Sealed>] M%s private() =" typeDef.name 
-                    do! push
-
-                    for c in creators do
-                        do! line "%s" c
-                        
-                    let margs = fpars |> Seq.map (sprintf "'x%s") |> String.concat ","
-                    let pars = ipars |> List.collect (fun p -> ["'" + p; "'xv" + p; "'xn" + p]) |> String.concat ","
-                    do! line "static member Update<%s>(m : M%s<%s>, v : %s) : unit = " pars typeDef.name margs (iTypeRef.fullName currentScope)
-                    do! push
-                    do! line "match m :> obj with"
-                    do! line "| :? IUpdatable<%s> as m -> m.Update(v)" (iTypeRef.fullName currentScope)
-                    do! line "| _ -> failwith \"cannot update\""
-                    do! pop
-
-                    do! pop
-
-
-
-                else
-                    let mTypeRef = 
-                        { typeDef with kind = Resettable; name = "M" + typeDef.name; path = "Mutable" :: typeDef.path }
-                            |> TypeDef.instantiate []
-
-
-                    let fields = typeDef.fields
-                    
-                    do! line "[<StructuredFormatDisplay(\"{AsString}\")>]"
-                    do! line "type %s(__initial : %s) = " (mTypeRef.name currentScope) (iTypeRef.fullName currentScope)
-                    do! push
-
                     do! line "let mutable __current = __initial"
 
                     // declare all the fields
@@ -904,20 +822,21 @@ module PreprocessingNew =
                             else
                                 do! line "let _%s = %s" f.name (f.description.aInit currentScope i)
 
-                    do! line ""
-
+                    do! line ""                   
+                        
                     // declare the members
                     for f in fields do
                         if f.nonIncremental then
-                            do! line "member x.%s = __initial.%s" f.name f.name
+                            do! line "%s x.%s = __current.%s" mem f.name f.name
                         elif f.treatAsValue then
-                            do! line "member x.%s = _%s :> IMod<_>" f.name f.name
+                            do! line "%s x.%s = _%s :> IMod<_>" mem f.name f.name
                         else
                             let name = sprintf "_%s" f.name
-                            do! line "member x.%s = %s" f.name (f.description.aView currentScope name)
+                            do! line "%s x.%s = %s" mem f.name (f.description.aView currentScope name)
                             
                     do! line ""
-
+    
+    
                     // define the update function
                     do! line "member x.Update(v : %s) =" (iTypeRef.fullName currentScope)
                     do! push
@@ -938,19 +857,54 @@ module PreprocessingNew =
                             for l in code.Split([|"\r\n"|], StringSplitOptions.RemoveEmptyEntries) do
                                 do! line "%s" l
 
+                    do! line ""
                     do! pop
                     do! pop
                     
-                    do! line ""
 
-                    do! line "static member Create(v : %s) = %s(v)" (iTypeRef.fullName currentScope) (mTypeRef.fullName currentScope)
-                    do! line "static member Update(m : %s, v : %s) = m.Update(v)" (mTypeRef.fullName currentScope) (iTypeRef.fullName currentScope)
+                    do! line ""
+                        
+                    match pars with
+                        | [] -> 
+                            do! line "static member Create(%s) : %s = %s(%s)" argDef selfName selfName argRef
+                        | _ ->
+                            let ctargs = pars |> List.map (sprintf "'%s") |> String.concat ","
+                            let creator = sprintf "static member Create<%s>(%s) : %s = %s(%s) :> %s" ctargs argDef baseName selfName argRef baseName
+                            creators.Add creator
+
+                    do! line "static member Update(m : %s, v : %s) = m.Update(v)" selfName (iTypeRef.fullName currentScope)
                     do! line ""
                     do! line "override x.ToString() = __current.ToString()"
-                    do! line "member x.AsString = sprintf \"%%A\" __current"
+                    do! line "%s x.AsString = sprintf \"%%A\" __current" mem
 
+                    do! line "interface IUpdatable<%s> with" (iTypeRef.fullName currentScope)
+                    do! push
+                    do! line "member x.Update v = x.Update v"
+                    do! pop
 
                     do! pop
+                    do! line ""
+                        
+                if creators.Count > 0 then
+                    do! line "and [<AbstractClass; Sealed>] M%s private() =" typeDef.name 
+                    do! push
+
+                    for c in creators do
+                        do! line "%s" c
+                        
+                    let margs = fpars |> Seq.map (sprintf "'x%s") |> String.concat ","
+                    let pars = ipars |> List.collect (fun p -> ["'" + p; "'xv" + p; "'xn" + p]) |> String.concat ","
+                    do! line "static member Update<%s>(m : M%s<%s>, v : %s) : unit = " pars typeDef.name margs (iTypeRef.fullName currentScope)
+                    do! push
+                    do! line "match m :> obj with"
+                    do! line "| :? IUpdatable<%s> as m -> m.Update(v)" (iTypeRef.fullName currentScope)
+                    do! line "| _ -> failwith \"cannot update\""
+                    do! pop
+
+                    do! pop
+
+
+
 
                 for e in err do
                     match e with

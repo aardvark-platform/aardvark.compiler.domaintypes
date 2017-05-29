@@ -56,7 +56,7 @@ type State =
         [<TreatAsValue>]
         test        : plist<Object>
 
-
+        [<NonIncremental>]
         threads     : hmap<int, Object>
 
         testBlub : option<int>
