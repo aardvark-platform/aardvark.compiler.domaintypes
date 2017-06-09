@@ -27,7 +27,7 @@
     <DocumentationFile>
     </DocumentationFile>
     <Prefer32Bit>false</Prefer32Bit>
-    <StartArguments>E:\Development\aardvark-compiler-domaintypes\src\Example\Example.fsproj</StartArguments>
+    <StartArguments>C:\Development\aardvark.media\src\Aardvark.Service.Demo\Aardvark.Service.Demo.fsproj</StartArguments>
     <OtherFlags>
     </OtherFlags>
     <EnableSQLServerDebugging>true</EnableSQLServerDebugging>
@@ -43,8 +43,9 @@
     <DocumentationFile>
     </DocumentationFile>
     <Prefer32Bit>false</Prefer32Bit>
-    <StartArguments>E:\Development\aardvark-compiler-domaintypes\src\Example\Example.fsproj</StartArguments>
-    <OtherFlags></OtherFlags>
+    <StartArguments>C:\Development\aardvark.media\src\Aardvark.Service.Demo\Aardvark.Service.Demo.fsproj</StartArguments>
+    <OtherFlags>
+    </OtherFlags>
   </PropertyGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>

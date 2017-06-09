@@ -49,7 +49,8 @@ let crackProject (file : string) =
             files = files
             references = references
         }
-    with _ ->
+    with e ->
+        printfn "[cracking project] %A at %A" e.Message e.StackTrace
         None
 
 
