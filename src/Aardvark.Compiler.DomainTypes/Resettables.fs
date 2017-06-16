@@ -305,9 +305,11 @@ type MSet<'a>(initial : hset<'a>) =
     let mutable current = initial
 
     member x.Update(values : hset<'a>) =
-        let ops = HSet.computeDelta current values
-        current <- values
-        history.Perform ops |> ignore
+        if not (Object.ReferenceEquals(values, current)) then
+            let ops = HSet.computeDelta current values
+            current <- values
+            if not (HDeltaSet.isEmpty ops) then
+                history.Perform ops |> ignore
 
     override x.ToString() =
         current.ToString()
@@ -327,40 +329,41 @@ type MSet<'k, 'm, 'v>(getId : 'k -> obj, initial : hset<'k>, create : 'k -> 'm, 
     let mutable current = HSet.empty
 
     let update (keys : hset<'k>) =
-        let keyDeltas = HSet.computeDelta current keys
+        if not (Object.ReferenceEquals(keys, current)) then
+            let keyDeltas = HSet.computeDelta current keys
+            current <- keys
 
-        
-        let valueDeltas =
-            keyDeltas |> HDeltaSet.choose (fun d ->
-                match d with
-                    | Add(_,k) ->
-                        let mutable isNew = false
-                        let r, v = 
-                            cache.GetOrCreate(getId k, fun _ ->
-                                isNew <- true
-                                ref k, create k
-                            )
+            if not (HDeltaSet.isEmpty keyDeltas) then
+                let valueDeltas =
+                    keyDeltas |> HDeltaSet.choose (fun d ->
+                        match d with
+                            | Add(_,k) ->
+                                let mutable isNew = false
+                                let r, v = 
+                                    cache.GetOrCreate(getId k, fun _ ->
+                                        isNew <- true
+                                        ref k, create k
+                                    )
 
-                        if isNew then
-                            Some (Add (view v))
-                        else
-                            r := k
-                            None
+                                if isNew then
+                                    Some (Add (view v))
+                                else
+                                    r := k
+                                    None
 
-                    | Rem(_,k) ->
-                        match cache.TryRemove k with
-                            | (true, (_,v)) ->
-                                Some (Rem (view v))
-                            | _ ->
-                                None
-            )
+                            | Rem(_,k) ->
+                                match cache.TryRemove k with
+                                    | (true, (_,v)) ->
+                                        Some (Rem (view v))
+                                    | _ ->
+                                        None
+                    )
 
 
-
-        current <- keys
-        history.Perform valueDeltas |> ignore
-        for (r, v) in cache.Values do
-            update(v, !r)
+                    
+                history.Perform valueDeltas |> ignore
+                for (r, v) in cache.Values do
+                    update(v, !r)
         
     do update initial
 
@@ -403,9 +406,11 @@ type MList<'a>(initial : plist<'a>) =
     let mutable current = initial
 
     member x.Update(values : plist<'a>) =
-        let delta = plist.ComputeDeltas(current, values)
-        history.Perform delta |> ignore
-        current <- values
+        if not (Object.ReferenceEquals(values, current)) then
+            let delta = plist.ComputeDeltas(current, values)
+            current <- values
+            if not (PDeltaList.isEmpty delta) then
+                history.Perform delta |> ignore
 
     interface alist<'a> with
         member x.IsConstant = false
@@ -420,37 +425,39 @@ type MList<'k, 'm, 'v>(initial : plist<'k>, create : 'k -> 'm, update : 'm * 'k 
     let mutable current = PList.empty
 
     let update (keys : plist<'k>) =
-        let keyDeltas = plist.ComputeDeltas(current, keys)
+        if not (Object.ReferenceEquals(keys, current)) then
+            let keyDeltas = plist.ComputeDeltas(current, keys)
+            current <- keys
+        
+            if not (PDeltaList.isEmpty keyDeltas) then
+                let valueDeltas =
+                    keyDeltas |> PDeltaList.choose (fun i op ->
+                        match op with
+                            | Set k ->
+                                let mutable isNew = false
+                                let r, v = 
+                                    cache.GetOrCreate(i, fun _ ->
+                                        isNew <- true
+                                        ref k, create k
+                                    )
 
-        let valueDeltas =
-            keyDeltas |> PDeltaList.choose (fun i op ->
-                match op with
-                    | Set k ->
-                        let mutable isNew = false
-                        let r, v = 
-                            cache.GetOrCreate(i, fun _ ->
-                                isNew <- true
-                                ref k, create k
-                            )
+                                if isNew then
+                                    Some (Set (view v))
+                                else
+                                    r := k
+                                    None
 
-                        if isNew then
-                            Some (Set (view v))
-                        else
-                            r := k
-                            None
+                            | Remove ->
+                                match cache.TryRemove i with
+                                    | (true, (_,v)) ->
+                                        Some Remove
+                                    | _ ->
+                                        None
+                    )
 
-                    | Remove ->
-                        match cache.TryRemove i with
-                            | (true, (_,v)) ->
-                                Some Remove
-                            | _ ->
-                                None
-            )
-
-        current <- keys
-        history.Perform valueDeltas |> ignore
-        for (r, v) in cache.Values do
-            update(v, !r)       
+                history.Perform valueDeltas |> ignore
+                for (r, v) in cache.Values do
+                    update(v, !r)       
 
     do update initial
 
@@ -489,9 +496,12 @@ type MMap<'k, 'v>(initial : hmap<'k, 'v>) =
     let mutable current = initial
 
     member x.Update(values : hmap<'k, 'v>) =
-        let delta = HMap.computeDelta current values
-        history.Perform delta |> ignore
-        current <- values
+        if not (Object.ReferenceEquals(values, current)) then
+            let delta = HMap.computeDelta current values
+            current <- values
+
+            if not (HMap.isEmpty delta) then
+                history.Perform delta |> ignore
 
     interface amap<'k, 'v> with
         member x.IsConstant = false
@@ -506,37 +516,40 @@ type MMap<'a, 'b, 'm, 'v>(initial : hmap<'a, 'b>, create : 'b -> 'm, update : 'm
     let mutable current = HMap.empty
 
     let update (keys : hmap<'a, 'b>) =
-        let keyDeltas = HMap.computeDelta current keys
+        if not (System.Object.ReferenceEquals(current, keys)) then
+            let keyDeltas = HMap.computeDelta current keys
+            current <- keys
 
-        let valueDeltas =
-            keyDeltas |> HMap.choose (fun i op ->
-                match op with
-                    | Set k ->
-                        let mutable isNew = false
-                        let r, v = 
-                            cache.GetOrCreate(i, fun _ ->
-                                isNew <- true
-                                ref k, create k
-                            )
+            if not (HMap.isEmpty keyDeltas) then
 
-                        if isNew then
-                            Some (Set (view v))
-                        else
-                            r := k
-                            None
+                let valueDeltas =
+                    keyDeltas |> HMap.choose (fun i op ->
+                        match op with
+                            | Set k ->
+                                let mutable isNew = false
+                                let r, v = 
+                                    cache.GetOrCreate(i, fun _ ->
+                                        isNew <- true
+                                        ref k, create k
+                                    )
 
-                    | Remove ->
-                        match cache.TryRemove i with
-                            | (true, (_,v)) ->
-                                Some Remove
-                            | _ ->
-                                None
-            )
+                                if isNew then
+                                    Some (Set (view v))
+                                else
+                                    r := k
+                                    None
 
-        current <- keys
-        history.Perform valueDeltas |> ignore
-        for (r, v) in cache.Values do
-            update(v, !r)       
+                            | Remove ->
+                                match cache.TryRemove i with
+                                    | (true, (_,v)) ->
+                                        Some Remove
+                                    | _ ->
+                                        None
+                    )
+
+                history.Perform valueDeltas |> ignore
+                for (r, v) in cache.Values do
+                    update(v, !r)       
 
     do update initial
 
@@ -603,178 +616,3 @@ type MOption private() =
     static member Update(m : MOption<'a>, v : Option<'a>) =
         m.Update(v)
 
-
-
-[<DomainType>]
-type Tup<'a, 'b> = { l : 'a; r : 'b }
-
-[<DomainType>]
-type Thing<'a> = { value : 'a; name : string }
-
-
-[<AutoOpen>]
-module Mutable =
-    [<AbstractClass>]
-    type MThing<'ma>() =
-        abstract member value: 'ma
-        abstract member name : IMod<string>
-
-    type private MThingV<'a>(__initial : Thing<'a>) =
-        inherit MThing<IMod<'a>>()
-
-        let mutable __current = __initial
-
-        let _value = ResetMod.Create(__initial.value)
-        let _name = ResetMod.Create(__initial.name)
-
-        override x.value = _value :> IMod<_>
-        override x.name = _name :> IMod<_>
-
-        member x.Update(v : Thing<'a>) =
-            if not (System.Object.ReferenceEquals(__current, v)) then
-                __current <- v
-                _value.Update(v.value)
-                _name.Update(v.name)
-
-        interface IUpdatable<Thing<'a>> with
-            member x.Update v = x.Update v
-
-    type private MThingD<'a, 'ma>(__initial : Thing<'a>, init : 'a -> 'ma, update : 'ma * 'a -> unit) =
-        inherit MThing<'ma>()
-
-        let mutable __current = __initial
-
-        let _value = init(__initial.value)
-        let _name = ResetMod.Create(__initial.name)
-
-        override x.value = _value
-        override x.name = _name :> IMod<_>
-
-        member x.Update(v : Thing<'a>) =
-            if not (System.Object.ReferenceEquals(__current, v)) then
-                __current <- v
-                update(_value, v.value)
-                _name.Update(v.name)
-
-        interface IUpdatable<Thing<'a>> with
-            member x.Update v = x.Update v
-
-    [<AbstractClass; Sealed; Extension>]
-    type MThing private() =
-        static member CreateV(v : Thing<'a>) =
-            MThingV<'a>(v) :> MThing<_>
-
-        static member CreateD(v : Thing<'a>, init : 'a -> 'ma, update : 'ma * 'a -> unit) =
-            MThingD(v, init, update) :> MThing<_>
-        
-        [<Extension>]
-        static member Update(m : MThing<'ma>, v : Thing<'a>) =
-            match m :> obj with    
-                | :? IUpdatable<Thing<'a>> as m -> m.Update(v)
-                | _ -> failwith "asdasds"
-
-
-    [<AbstractClass>]
-    type MTup<'ma, 'mb>() =
-        abstract member l: 'ma
-        abstract member r : 'mb
-
-    type private MTupVV<'a, 'b>(__initial : Tup<'a, 'b>) =
-        inherit MTup<IMod<'a>, IMod<'b>>()
-
-        let mutable __current = __initial
-
-        let _l = ResetMod.Create(__initial.l)
-        let _r = ResetMod.Create(__initial.r)
-
-        override x.l = _l :> IMod<_>
-        override x.r = _r :> IMod<_>
-
-        member x.Update(v : Tup<'a, 'b>) =
-            if not (System.Object.ReferenceEquals(__current, v)) then
-                __current <- v
-                _l.Update(v.l)
-                _r.Update(v.r)
-
-        interface IUpdatable<Tup<'a, 'b>> with
-            member x.Update v = x.Update v
-
-    type private MTupVD<'a, 'b, 'mb>(__initial : Tup<'a, 'b>, __initb : 'b -> 'mb, __updateb : 'mb * 'b -> unit) =
-        inherit MTup<IMod<'a>, 'mb>()
-
-        let mutable __current = __initial
-
-        let _l = ResetMod.Create(__initial.l)
-        let _r = __initb(__initial.r)
-
-        override x.l = _l :> IMod<_>
-        override x.r = _r
-
-        member x.Update(v : Tup<'a, 'b>) =
-            if not (System.Object.ReferenceEquals(__current, v)) then
-                __current <- v
-                _l.Update(v.l)
-                __updateb(_r, v.r)
-
-        interface IUpdatable<Tup<'a, 'b>> with
-            member x.Update v = x.Update v
-
-    type private MTupDV<'a, 'ma, 'b>(__initial : Tup<'a, 'b>, __inita : 'a -> 'ma, __updatea : 'ma * 'a -> unit) =
-        inherit MTup<'ma, IMod<'b>>()
-
-        let mutable __current = __initial
-
-        let _l = __inita(__initial.l)
-        let _r = ResetMod.Create(__initial.r)
-
-        override x.l = _l
-        override x.r = _r :> IMod<_>
-
-        member x.Update(v : Tup<'a, 'b>) =
-            if not (System.Object.ReferenceEquals(__current, v)) then
-                __current <- v
-                __updatea(_l, v.l)
-                _r.Update(v.r)
-
-        interface IUpdatable<Tup<'a, 'b>> with
-            member x.Update v = x.Update v
-
-    type private MTupDD<'a, 'ma, 'b, 'mb>(__initial : Tup<'a, 'b>, __inita : 'a -> 'ma, __updatea : 'ma * 'a -> unit, __initb : 'b -> 'mb, __updateb : 'mb * 'b -> unit) =
-        inherit MTup<'ma, 'mb>()
-
-        let mutable __current = __initial
-
-        let _l = __inita(__initial.l)
-        let _r = __initb(__initial.r)
-
-        override x.l = _l
-        override x.r = _r
-
-        member x.Update(v : Tup<'a, 'b>) =
-            if not (System.Object.ReferenceEquals(__current, v)) then
-                __current <- v
-                __updatea(_l, v.l)
-                __updateb(_r, v.r)
-
-        interface IUpdatable<Tup<'a, 'b>> with
-            member x.Update v = x.Update v
-
-    [<AbstractClass; Sealed; Extension>]
-    type MTup private() =
-        static member CreateVV(v : Tup<'a, 'b>) =
-            MTupVV(v) :> MTup<_,_>
-
-        static member CreateVD(v, ib, ub) =
-            MTupVD(v, ib, ub) :> MTup<_,_>
-
-        static member CreateDV(v, ia, ua) =
-            MTupDV(v, ia, ua) :> MTup<_,_>
-        
-        static member CreateDD(v, ia, ua, ib, ub) =
-            MTupDD(v, ia, ua, ib, ub) :> MTup<_,_>
-
-        [<Extension>]
-        static member Update(m : MTup<'ma, 'mb>, v : Tup<'a, 'b>) =
-            match m :> obj with    
-                | :? IUpdatable<Tup<'a, 'b>> as m -> m.Update(v)
-                | _ -> failwith "asdasds"
