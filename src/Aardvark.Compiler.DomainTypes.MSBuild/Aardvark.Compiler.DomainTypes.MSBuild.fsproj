@@ -65,7 +65,7 @@
   </Target>
   -->
   <ItemGroup>
-    <None Include="Aardvark.Compiler.DomainTypes.targets">
+    <None Include="Aardvark.Compiler.DomainTypes.MSBuild.targets" >
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <Compile Include="PreProcessor.fs" />

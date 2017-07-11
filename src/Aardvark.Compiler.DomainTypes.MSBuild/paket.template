@@ -8,7 +8,7 @@ dependencies
 files
     ..\..\bin\Release\Aardvark.Compiler.DomainTypes.Build.dll ==> build
     ..\..\bin\Release\Aardvark.Compiler.DomainTypes.MSBuild.dll ==> build
-    ..\..\bin\Release\Aardvark.Compiler.DomainTypes.targets ==> build
+    ..\..\bin\Release\Aardvark.Compiler.DomainTypes.MSBuild.targets ==> build
 	..\..\bin\Release\FSharp.Compiler.Service.dll ==> build
 	..\..\bin\Release\FSharp.Compiler.Service.MSBuild.v12.dll ==> build
 	..\..\bin\Release\Aardvark.Compiler.DomainTypes.MSBuild.dll.config ==> build
