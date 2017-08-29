@@ -9,3 +9,4 @@ obj
 /src/.vs/Aardvark.Compiler.DomainTypes/v14/*.suo
 *.g.fs
 /src/.vs/Aardvark.Compiler.DomainTypes/v15/*.suo
+/src/.vs/Example/v14/*.suo

@@ -2,10 +2,12 @@ framework: >= net45
 source https://api.nuget.org/v3/index.json
 source https://vrvis.myget.org/F/aardvark_public/api/v3/index.json
 
-nuget Aardvark.Base                           ~> 3.0.15
-nuget Aardvark.Base.FSharp                    ~> 3.0.15
-nuget Aardvark.Base.Incremental               ~> 3.0.15
-nuget Aardvark.Base.Essentials                ~> 3.0.15
+nuget FSharp.Core ~> 4.0.0
+
+nuget Aardvark.Base                           ~> 3.0.35
+nuget Aardvark.Base.FSharp                    ~> 3.0.35
+nuget Aardvark.Base.Incremental               ~> 3.0.35
+nuget Aardvark.Base.Essentials                ~> 3.0.35
 
 nuget FSharp.Compiler.Service                 ~> 12.0.8
 
@@ -16,6 +18,7 @@ nuget Microsoft.Build                         ~> 15.1.1012
 
 group Build
 content: none
+framework: net45
 source https://vrvis.myget.org/F/aardvark_public/api/v3/index.json
 source https://api.nuget.org/v3/index.json
 
