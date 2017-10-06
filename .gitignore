@@ -10,3 +10,5 @@ obj
 *.g.fs
 /src/.vs/Aardvark.Compiler.DomainTypes/v15/*.suo
 /src/.vs/Example/v14/*.suo
+/src/.vs/Example/v15/*.suo
+/.paket/Paket.Restore.targets
