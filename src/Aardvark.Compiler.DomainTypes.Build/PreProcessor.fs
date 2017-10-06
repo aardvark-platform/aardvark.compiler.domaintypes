@@ -813,7 +813,9 @@ module PreprocessingNew =
                     do! push
                     do! line "inherit %s()" baseName
      
-                    do! line "let mutable __current = __initial"
+                    let sourceName = iTypeRef.fullName currentScope
+
+                    do! line "let mutable __current : Aardvark.Base.Incremental.ModRef<%s> = Aardvark.Base.Incremental.Mod.init(__initial)" sourceName
 
                     // declare all the fields
                     for f in fields do
@@ -829,7 +831,7 @@ module PreprocessingNew =
                     // declare the members
                     for f in fields do
                         if f.nonIncremental then
-                            do! line "%s x.%s = __current.%s" mem f.name f.name
+                            do! line "%s x.%s = __current.Value.%s" mem f.name f.name
                         elif f.treatAsValue then
                             do! line "%s x.%s = _%s :> IMod<_>" mem f.name f.name
                         else
@@ -837,14 +839,16 @@ module PreprocessingNew =
                             do! line "%s x.%s = %s" mem f.name (f.description.aView currentScope name)
                             
                     do! line ""
+
+                    do! line "member x.Current = __current :> IMod<_>"
     
     
                     // define the update function
                     do! line "member x.Update(v : %s) =" (iTypeRef.fullName currentScope)
                     do! push
-                    do! line "if not (System.Object.ReferenceEquals(__current, v)) then"
+                    do! line "if not (System.Object.ReferenceEquals(__current.Value, v)) then"
                     do! push
-                    do! line "__current <- v"
+                    do! line "__current.Value <- v"
                     do! line ""
 
                     for f in fields do
@@ -876,8 +880,8 @@ module PreprocessingNew =
 
                     do! line "static member Update(m : %s, v : %s) = m.Update(v)" selfName (iTypeRef.fullName currentScope)
                     do! line ""
-                    do! line "override x.ToString() = __current.ToString()"
-                    do! line "%s x.AsString = sprintf \"%%A\" __current" mem
+                    do! line "override x.ToString() = __current.Value.ToString()"
+                    do! line "%s x.AsString = sprintf \"%%A\" __current.Value" mem
 
                     do! line "interface IUpdatable<%s> with" (iTypeRef.fullName currentScope)
                     do! push
@@ -1404,7 +1408,11 @@ module Preprocessing =
                             do! update m t m i
 
                     | _ ->
-                        do! line "%s.Update(%s)" mname iname
+                        if FSharpType.isDomainType t then
+                            let target = t.TypeDefinition.DisplayName //VS15 hack to for union types
+                            do! line "M%s.Update(%s,%s)" target mname iname
+                        else
+                            do! line "%s.Update(%s)" mname iname
             }
 
         update "" t mname iname
@@ -1613,6 +1621,8 @@ module Preprocessing =
                             for (f,a) in annotatedFields do
                                 let fName = f.CleanName
 
+                                //do! line "let _%s = unbox<
+                                
                                 do! updateExpression f.FieldType ("_" + fName) fName
 //
 //                                match f.FieldType with
