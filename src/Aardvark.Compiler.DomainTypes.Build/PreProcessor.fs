@@ -815,7 +815,7 @@ module PreprocessingNew =
      
                     let sourceName = iTypeRef.fullName currentScope
 
-                    do! line "let mutable __current : Aardvark.Base.Incremental.ModRef<%s> = Aardvark.Base.Incremental.Mod.init(__initial)" sourceName
+                    do! line "let mutable __current : Aardvark.Base.Incremental.IModRef<%s> = Aardvark.Base.Incremental.EqModRef<%s>(__initial) :> Aardvark.Base.Incremental.IModRef<%s>" sourceName sourceName sourceName
 
                     // declare all the fields
                     for f in fields do

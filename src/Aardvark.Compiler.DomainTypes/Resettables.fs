@@ -616,3 +616,67 @@ type MOption private() =
     static member Update(m : MOption<'a>, v : Option<'a>) =
         m.Update(v)
 
+
+type EqModRef<'a>(value : 'a) =
+    inherit AdaptiveObject()
+
+    let mutable value = value
+    let mutable cache = value
+    let mutable changed = None
+
+    let getChanged() =
+        match changed with
+            | None -> 
+                let c = Event<EventHandler<EventArgs>, EventArgs>()
+                changed <- Some c
+                c
+            | Some c ->
+                c
+
+    member x.UnsafeCache
+        with get() = value
+        and set v = value <- v
+
+    member x.Value
+        with get() = value
+        and set v =
+            if not <| Object.ReferenceEquals(v, value) then
+                value <- v
+                let fin = 
+                    match changed with
+                        | Some c -> Some (fun () -> c.Trigger(x, EventArgs.Empty))
+                        | None -> None
+                x.MarkOutdated fin
+
+
+    member x.GetValue(token : AdaptiveToken) =
+        x.EvaluateAlways token (fun token ->
+            if x.OutOfDate then
+                cache <- value
+            cache
+        )
+
+    override x.ToString() =
+       sprintf "{ value = %A }" value
+
+    [<CLIEvent>]
+    member x.Changed =
+        getChanged().Publish
+
+    interface IMod with
+        member x.IsConstant = false
+        member x.GetValue(caller) = x.GetValue(caller) :> obj
+
+    interface IMod<'a> with
+        member x.GetValue(caller) = x.GetValue(caller)
+
+    interface IModRef<'a> with
+        member x.Value 
+            with get () = x.Value
+            and set v = x.Value <- v
+        member x.UnsafeCache
+            with get() = x.UnsafeCache
+            and set v = x.UnsafeCache <- v
+
+        [<CLIEvent>]
+        member x.Changed = x.Changed
