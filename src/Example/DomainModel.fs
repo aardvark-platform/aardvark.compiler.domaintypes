@@ -70,3 +70,14 @@ type Tree =
         name : string
         id : plist<Tree>
     }
+
+namespace Groups
+
+open Aardvark.Base
+open Aardvark.Base.Incremental
+
+[<DomainType>]
+type Researcher = { urdar : int }
+
+[<DomainType>]
+type Manager = { gabbl : int }

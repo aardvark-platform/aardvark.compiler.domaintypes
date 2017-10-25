@@ -42,3 +42,12 @@ type Model = {
 }
 
 type Action = Action
+
+
+open Groups
+
+[<DomainType>]
+type Persons =
+    | Researchers of plist<Researcher>
+    | Managers of plist<Manager>
+    | BothOida of plist<Researcher> * plist<Manager> * plist<Manager>

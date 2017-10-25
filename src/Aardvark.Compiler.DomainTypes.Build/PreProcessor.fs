@@ -1202,12 +1202,14 @@ module Preprocessing =
         {
             aUpcast     : string -> string
             aInit       : string -> string
+            aDomainRef  : Option<DomainTypeReference>
         }
 
     let valueAdapter =
         {
             aUpcast = fun v -> v + " :> IMod<_>"
             aInit = sprintf "ResetMod.Create(%s)"
+            aDomainRef = None
         }
              
     type FSharpField with
@@ -1299,13 +1301,15 @@ module Preprocessing =
                 | PList (DomainType t) ->
                     let ref = domainTypeRef scope t
                     
-                    return {
+                    return {    
+                        aDomainRef = Some ref
                         aUpcast = fun v -> v + " :> alist<_>"
                         aInit = fun fName -> sprintf "ResetMapList(%s, (fun _ e -> %s), (fun (m,e) -> %s))"  fName (ref.creator "e") (ref.updater "m" "e")
                     }
 
                 | PList t ->
                     return {
+                        aDomainRef = None
                         aUpcast = fun v -> v + " :> alist<_>"
                         aInit = sprintf "ResetList(%s)"
                     }
@@ -1322,12 +1326,14 @@ module Preprocessing =
                  
 
                     return {
+                        aDomainRef = Some ref
                         aUpcast = fun v -> v + " :> aset<_>"
                         aInit = fun fName -> sprintf "ResetMapSet(%s, %s, (fun e -> %s), (fun (m,e) -> %s))" getKey fName (ref.creator "e") (ref.updater "m" "e")
                     }
 
                 | HSet t ->
                     return {
+                        aDomainRef = None
                         aUpcast = fun v -> v + " :> aset<_>"
                         aInit = fun fName -> sprintf "ResetSet(%s)" fName
                     }
@@ -1337,12 +1343,14 @@ module Preprocessing =
 
      
                     return {
+                        aDomainRef = Some ref
                         aUpcast = fun v -> v + " :> amap<_,_>"
                         aInit = fun fName -> sprintf "ResetMapMap(%s, (fun _ v -> %s), (fun (m,e) -> %s))" fName (ref.creator "v") (ref.updater "m" "e")
                     }
 
                 | HMap(k, t) ->
                     return {
+                        aDomainRef = None
                         aUpcast = fun v -> v + " :> amap<_,_>"
                         aInit = fun fName -> sprintf "ResetMap(%s)" fName
                     }
@@ -1353,6 +1361,7 @@ module Preprocessing =
 
 
                     return {
+                        aDomainRef = Some ref
                         aUpcast = fun v -> v + " :> IMod<_>"
                         aInit = fun fName -> sprintf "ResetMapOption(%s, (fun e -> %s), (fun (m,e) -> %s))" fName (ref.creator "e") (ref.updater "m" "e")
                     }
@@ -1376,6 +1385,7 @@ module Preprocessing =
                         
 
                     return {
+                        aDomainRef = None
                         aUpcast = upcaster
                         aInit = init 
                     }
@@ -1383,6 +1393,7 @@ module Preprocessing =
                 | DomainType t ->
                     let ref = domainTypeRef scope t
                     return {
+                        aDomainRef = Some ref
                         aUpcast = id
                         aInit = ref.creator
                     }
@@ -1393,7 +1404,7 @@ module Preprocessing =
              
         }
 
-    let updateExpression (t : FSharpType) (mname : string) (iname : string) =
+    let updateExpression (domainTypeRef : Option<DomainTypeReference>) (t : FSharpType) (mname : string) (iname : string) =
         let rec update (prefix : string) (t : FSharpType) (mname : string) (iname : string) =
             codegen {
                 match t with
@@ -1409,8 +1420,15 @@ module Preprocessing =
 
                     | _ ->
                         if FSharpType.isDomainType t then
-                            let target = t.TypeDefinition.DisplayName //VS15 hack to for union types
-                            do! line "M%s.Update(%s,%s)" target mname iname
+                            match domainTypeRef with
+                                | Some r -> 
+                                    let target = t.TypeDefinition.DisplayName //VS15 hack to for union types
+                                    //do! line "%sM%s.Update(%s,%s)" r. target mname iname
+                                    do! line "%s" (r.updater mname iname)
+                                | None ->
+                                    printfn "strange"
+                                    let target = t.TypeDefinition.DisplayName //VS15 hack to for union types
+                                    do! line "M%s.Update(%s,%s)" target mname iname
                         else
                             do! line "%s.Update(%s)" mname iname
             }
@@ -1623,7 +1641,7 @@ module Preprocessing =
 
                                 //do! line "let _%s = unbox<
                                 
-                                do! updateExpression f.FieldType ("_" + fName) fName
+                                do! updateExpression a.aDomainRef f.FieldType ("_" + fName) fName
 //
 //                                match f.FieldType with
 //                                    | Tuple types ->
