@@ -14,3 +14,4 @@ files
 	..\..\bin\Release\Aardvark.Compiler.DomainTypes.MSBuild.dll.config ==> build
 	..\..\bin\Release\System.Collections.Immutable.dll ==> build
 	..\..\bin\Release\System.Reflection.Metadata.dll ==> build
+	..\..\bin\Release\FSharp.Core.dll ==> build
