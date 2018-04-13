@@ -40,7 +40,11 @@ module TypeTree =
 
         module FSharpAttribute =
             let isDomainAttribute (a : FSharpAttribute) =
-                a.AttributeType.FullName = domainAttName
+                try
+                    a.AttributeType.FullName = domainAttName
+                with e -> 
+                    printfn "%A" e
+                    false
                 
             let isPrimaryKey (a : FSharpAttribute) =
                 a.AttributeType.FullName = primAttName
@@ -1827,6 +1831,7 @@ module Preprocessing =
         async {
             let! res = checker.ParseAndCheckProject(options)
             
+            printfn "urdar: %A" res.Errors
             if res.HasCriticalErrors then
                 return CompilerError (Array.toList res.Errors)
 
