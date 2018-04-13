@@ -852,11 +852,11 @@ NUGET
   remote: https://api.nuget.org/v3/index.json
     FAKE (4.63.2) - content: none
     ILMerge (2.14.1208)
-    Mono.Cecil (0.10.0-beta7) - content: none
+    Mono.Cecil (0.10) - content: none
     SourceLink.Fake (1.1) - content: none
 GITHUB
   remote: vrvis/Aardvark.Fake
-    FULLPROJECT (0bd495d19630a51f886fb4a2374f64fe9088f09d)
+    FULLPROJECT (bfae10520868567c41bfa9196a7ac7ef79bb50f6)
       FAKE (>= 4.63 < 4.64)
       Mono.Cecil (>= 0.10.0-beta6 < 0.11)
       SourceLink.Fake (>= 1.1 < 1.2)

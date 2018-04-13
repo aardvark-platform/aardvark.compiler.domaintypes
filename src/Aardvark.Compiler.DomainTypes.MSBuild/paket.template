@@ -5,13 +5,3 @@ description
     Domain-Type Preprocessor for FSharp Projects
 dependencies
 	Aardvark.Compiler.DomainTypes = CURRENTVERSION
-files
-    ..\..\bin\Release\Aardvark.Compiler.DomainTypes.Build.dll ==> build
-    ..\..\bin\Release\Aardvark.Compiler.DomainTypes.MSBuild.dll ==> build
-    ..\..\bin\Release\Aardvark.Compiler.DomainTypes.MSBuild.targets ==> build
-	..\..\bin\Release\FSharp.Compiler.Service.dll ==> build
-	..\..\bin\Release\FSharp.Compiler.Service.MSBuild.v12.dll ==> build
-	..\..\bin\Release\Aardvark.Compiler.DomainTypes.MSBuild.dll.config ==> build
-	..\..\bin\Release\System.Collections.Immutable.dll ==> build
-	..\..\bin\Release\System.Reflection.Metadata.dll ==> build
-	..\..\bin\Release\FSharp.Core.dll ==> build

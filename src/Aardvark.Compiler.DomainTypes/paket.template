@@ -3,6 +3,3 @@ id Aardvark.Compiler.DomainTypes
 authors VRVis Research Center
 description
     Domain-Type runtime for FSharp Projects
-files
-    ..\..\bin\Release\Aardvark.Compiler.DomainTypes.dll ==> lib/net45
-    ..\..\bin\Release\Aardvark.Compiler.DomainTypes.pdb ==> lib/net45

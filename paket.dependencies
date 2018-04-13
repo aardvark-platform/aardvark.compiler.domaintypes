@@ -23,4 +23,4 @@ source https://vrvis.myget.org/F/aardvark_public/api/v3/index.json
 source https://api.nuget.org/v3/index.json
 
 nuget ILMerge ~> 2.14.1208
-github vrvis/Aardvark.Fake:standalone
+github vrvis/Aardvark.Fake:v4
