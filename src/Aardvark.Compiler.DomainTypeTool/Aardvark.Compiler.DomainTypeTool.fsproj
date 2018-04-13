@@ -28,7 +28,7 @@
     <DocumentationFile>
     </DocumentationFile>
     <Prefer32Bit>false</Prefer32Bit>
-    <StartArguments>D:\Development\diffgenerator\src\Example\Example.fsproj</StartArguments>
+    <StartArguments>D:\Development\diffgenerator\src\ExampleDotnetCore\ExampleDotnetCore.fsproj</StartArguments>
     <OtherFlags>
     </OtherFlags>
     <EnableSQLServerDebugging>true</EnableSQLServerDebugging>
