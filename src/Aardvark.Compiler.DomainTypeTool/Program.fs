@@ -11,6 +11,7 @@ open Microsoft.Build.BuildEngine
 open Microsoft.Build.Utilities
 open Microsoft.Build.Evaluation
 open Microsoft.Build.Framework
+open Microsoft.Build.Logging
 
 type FSharpProject =
     {
@@ -27,9 +28,11 @@ let crackProject (file : string) =
         engine.SetGlobalProperty("Configuration", "Debug") |> ignore
         engine.SetGlobalProperty("Platform", "AnyCPU") |> ignore
 
+        let logger = ConsoleLogger() :> ILogger
         let project = engine.LoadProject(file)
         let instance = project.CreateProjectInstance()
-        instance.Build([|"ResolveReferences"|], []) |> ignore
+        let ok = instance.Build([|"ResolveReferences"|], [logger]) 
+        printfn "ok: %A" ok
     
         let dir = Path.GetDirectoryName(file)
 
