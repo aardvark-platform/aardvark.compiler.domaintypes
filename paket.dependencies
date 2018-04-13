@@ -9,7 +9,7 @@ nuget Aardvark.Base.FSharp                    ~> 4.0.0
 nuget Aardvark.Base.Incremental               ~> 4.0.0
 nuget Aardvark.Base.Essentials                ~> 4.0.0
 
-nuget FSharp.Compiler.Service                 ~> 12.0.8
+nuget FSharp.Compiler.Service                 ~> 22.0.3
 
 nuget Microsoft.Build.Tasks.Core              ~> 15.6.85
 nuget Microsoft.Build.Framework               ~> 15.6.85
