@@ -1,7 +1,0 @@
-type project
-id Aardvark.Compiler.DomainTypeTool
-authors VRVis Research Center
-description
-    Domain-Type Preprocessor for FSharp Projects
-dependencies
-	Aardvark.Compiler.DomainTypes = CURRENTVERSION

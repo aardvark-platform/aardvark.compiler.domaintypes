@@ -15,6 +15,9 @@ nuget Microsoft.Build.Tasks.Core              ~> 15.6.85
 nuget Microsoft.Build.Framework               ~> 15.6.85
 nuget Microsoft.Build.Utilities.Core          ~> 15.6.85
 nuget Microsoft.Build                         ~> 15.6.85
+nuget Microsoft.NET.Sdk                       ~> 1.0.0-alpha
+
+nuget FSharpLint.MSBuild                      ~> 0.9.1-beta
 
 group Build
 content: none
