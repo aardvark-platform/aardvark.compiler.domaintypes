@@ -44,6 +44,7 @@ module Extensions =
                 w.file, 
                 w.startLine, w.startColumn + 1, 
                 w.endLine, w.endColumn + 1, 
+                MessageImportance.Low,
                 w.message,
                 [||]
             )
@@ -89,9 +90,7 @@ type Preprocess() =
 
         let isNetFramework = references |> Array.exists (fun r -> Path.GetFileNameWithoutExtension(r).ToLower() = "mscorlib")
         let refs = Set.ofArray references
-
-        x.Log.LogWarning("frame oida: " + framework)
-
+        
 
         let prep = Preprocessing.run isNetFramework x.Log.Log projectFile refs (Array.toList files) |> Async.RunSynchronously
         results <- files

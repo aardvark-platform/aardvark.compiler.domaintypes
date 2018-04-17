@@ -974,8 +974,7 @@ module Preprocessing =
         let args =
             [|
                 yield "--simpleresolution"
-                if isNetFramework then
-                    yield "--noframework"
+                yield "--noframework"
                 yield "--fullpaths"
                 yield "--flaterrors"
                 yield "--platform:anycpu"
@@ -1836,7 +1835,7 @@ module Preprocessing =
             else
                 for e in res.Errors do
                     let info = ErrorInfo.ofFSharpErrorInfo e
-                    log { info with severity = Warning }
+                    log { info with severity = Severity.Info }
 
                 let entityTrees = 
                     res.AssemblyContents.ImplementationFiles |> List.choose (fun f ->
