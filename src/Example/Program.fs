@@ -1,4 +1,5 @@
-﻿// Learn more about F# at http://fsharp.org
+﻿module Hugo
+// Learn more about F# at http://fsharp.org
 // See the 'F# Tutorial' project for more help.
 open Aardvark.Base
 open Aardvark.Base.Incremental
@@ -50,7 +51,6 @@ let treeView (view : 'a -> DomNode) (t : MTree<'a, _>) =
     )
 
 
-[<EntryPoint>]
 let main argv =
     let s : MMyState = failwith ""
 

@@ -35,6 +35,26 @@ module Extensions =
                 w.message,
                 [||]
             )
+            
+        member x.LogInfo(w : ErrorInfo) =
+            x.LogMessage(
+                "", 
+                string w.code, 
+                "", 
+                w.file, 
+                w.startLine, w.startColumn + 1, 
+                w.endLine, w.endColumn + 1, 
+                w.message,
+                [||]
+            )
+        
+        member x.Log(w : ErrorInfo) =
+            match w.severity with
+                | Severity.Warning -> x.LogWarning(w)
+                | Severity.Error -> x.LogError(w)
+                | Severity.Info -> x.LogInfo(w)
+            
+
         member x.LogError(w : FSharpErrorInfo) =
             x.LogError(
                 "", 
@@ -56,13 +76,24 @@ type Preprocess() =
     let mutable references : string[] = [||]
     let mutable projectFile = ""
     let mutable results : string[] = [||]
-
+    let mutable framework : string = ""
 
     override x.Execute() =
         if debug then
             System.Diagnostics.Debugger.Launch() |> ignore
             
-        let prep = Preprocessing.run projectFile (Set.ofArray references) (Array.toList files) |> Async.RunSynchronously
+            
+        //x.Log.LogWarning(sprintf "%d references" references.Length)
+        //for r in references do
+        //    x.Log.LogWarning(r)
+
+        let isNetFramework = references |> Array.exists (fun r -> Path.GetFileNameWithoutExtension(r).ToLower() = "mscorlib")
+        let refs = Set.ofArray references
+
+        x.Log.LogWarning("frame oida: " + framework)
+
+
+        let prep = Preprocessing.run isNetFramework x.Log.Log projectFile refs (Array.toList files) |> Async.RunSynchronously
         results <- files
 
         let projectDir = Path.GetDirectoryName projectFile
@@ -125,6 +156,10 @@ type Preprocess() =
     member x.Debug
         with get() = debug
         and set i = debug <- i
+        
+    member x.TargetFramework
+        with get() = framework
+        and set i = framework <- i
 
     [<Required>]
     member x.Files

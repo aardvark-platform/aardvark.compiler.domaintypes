@@ -970,11 +970,12 @@ module Preprocessing =
     let checker = FSharpChecker.Create(keepAssemblyContents = true)
     let domainAttName = "Aardvark.Base.Incremental.DomainTypeAttribute"
 
-    let getProjectOptions (fsprojFile : string) (references : list<string>) (files : list<string>) =
+    let getProjectOptions (isNetFramework : bool) (fsprojFile : string) (references : list<string>) (files : list<string>) =
         let args =
             [|
                 yield "--simpleresolution"
-                yield "--noframework"
+                if isNetFramework then
+                    yield "--noframework"
                 yield "--fullpaths"
                 yield "--flaterrors"
                 yield "--platform:anycpu"
@@ -1826,15 +1827,17 @@ module Preprocessing =
                do! generateMutableModel file e
         }
 
-    let runWithOptions (options : FSharpProjectOptions) =
+    let runWithOptions (log : ErrorInfo -> unit) (options : FSharpProjectOptions) =
         async {
             let! res = checker.ParseAndCheckProject(options)
             
-            printfn "urdar: %A" res.Errors
             if res.HasCriticalErrors then
                 return CompilerError (Array.toList res.Errors)
-
             else
+                for e in res.Errors do
+                    let info = ErrorInfo.ofFSharpErrorInfo e
+                    log { info with severity = Warning }
+
                 let entityTrees = 
                     res.AssemblyContents.ImplementationFiles |> List.choose (fun f ->
                         let domainTypes = f.Declarations |> Seq.choose buildEntityTree |> Seq.toList
@@ -1863,16 +1866,18 @@ module Preprocessing =
                 return Worked code
         }
 
-    let runInternal (fsProjPath : string) (references : Set<string>) (files : list<string>) =
+    let runInternal (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (references : Set<string>) (files : list<string>) =
         async {
             let dir = Path.GetDirectoryName fsProjPath
             let outDir = Path.Combine(dir, "..", "..", "bin", "Debug")
 
-            let options = getProjectOptions fsProjPath (Set.toList references) files
-            return! runWithOptions options
+            let options = getProjectOptions isNetFramework fsProjPath (Set.toList references) files
+            
+
+            return! runWithOptions log options
         }
 
-    let run (fsProjPath : string) (references : Set<string>) (files : list<string>) =
+    let run (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (references : Set<string>) (files : list<string>) =
         let dir = Path.GetDirectoryName fsProjPath
         let outDir = Path.Combine(dir, "..", "..", "bin", "Debug")
       
@@ -1897,4 +1902,4 @@ module Preprocessing =
                     Path.Combine(dir, r)
             )
 
-        runInternal fsProjPath references files
+        runInternal isNetFramework log fsProjPath references files

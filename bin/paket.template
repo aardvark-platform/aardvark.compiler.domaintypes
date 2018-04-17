@@ -11,3 +11,5 @@ files
 	Release/Aardvark.Compiler.DomainTypes.MSBuild.DotNet.dll ==> build
 	Release/Aardvark.Compiler.DomainTypes.MSBuild.DotNet.dll.config ==> build
 	Release/Aardvark.Compiler.DomainTypes.MSBuild.targets ==> build
+frameworkAssemblies
+	netstandard
