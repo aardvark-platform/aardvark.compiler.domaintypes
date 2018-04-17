@@ -967,7 +967,7 @@ module PreprocessingNew =
 module Preprocessing =
 
 
-    let checker = FSharpChecker.Create()
+    let checker = FSharpChecker.Create(keepAssemblyContents = true)
     let domainAttName = "Aardvark.Base.Incremental.DomainTypeAttribute"
 
     let getProjectOptions (fsprojFile : string) (references : list<string>) (files : list<string>) =

@@ -1,7 +1,0 @@
-type file
-id Aardvark.Compiler.DomainTypes.MSBuild
-authors VRVis Research Center
-description
-    Domain-Type Preprocessor for FSharp Projects
-dependencies
-	Aardvark.Compiler.DomainTypes = CURRENTVERSION

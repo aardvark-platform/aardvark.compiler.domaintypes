@@ -12,3 +12,6 @@ obj
 /src/.vs/Example/v14/*.suo
 /src/.vs/Example/v15/*.suo
 /.paket/Paket.Restore.targets
+**/bin/
+/src/.vs/Example/DesignTimeBuild/*.dtbcache
+/src/.vs/Aardvark.Compiler.DomainTypes/DesignTimeBuild/*.dtbcache
