@@ -151,6 +151,7 @@ module TypeTree =
         | GenericParameter of name : string
         | Reference of def : TypeDef * targs : array<TypeRef>
         | Tuple of list<TypeRef>
+        | Function of list<TypeRef>
         | Array of TypeRef with
 
             member x.genericParameters =
@@ -159,6 +160,7 @@ module TypeTree =
                     | GenericParameter p -> Set.singleton p
                     | Tuple ts -> ts |> List.map (fun t -> t.genericParameters) |> Set.unionMany
                     | Array t -> t.genericParameters
+                    | Function ts -> ts |> List.map (fun t -> t.genericParameters) |> Set.unionMany
 
             member x.fullName (scope : string) = 
                 match x with
@@ -180,6 +182,9 @@ module TypeTree =
                         let n = t.fullName scope
                         sprintf "%s[]" n
 
+                    | Function types ->
+                        types |> Seq.map (fun t -> t.fullName scope) |> String.concat " -> "
+
             member x.name (scope : string) =
                 match x with
                     | GenericParameter n ->
@@ -188,25 +193,30 @@ module TypeTree =
                     | Reference(def,targs) ->
                         let dn = def.name
                         if targs.Length > 0 then
-                            let targs = targs |> Seq.map (fun t -> t.fullName scope) |> String.concat ","
+                            let targs = targs |> Seq.map (fun t -> t.name scope) |> String.concat ","
                             sprintf "%s<%s>" dn targs
                         else
                             dn
                     | Tuple types ->
-                        let types = types |> Seq.map (fun t -> t.fullName scope) |> String.concat " * "
+                        let types = types |> Seq.map (fun t -> t.name scope) |> String.concat " * "
                         sprintf "(%s)" types
 
                     | Array t ->
-                        let n = t.fullName scope
+                        let n = t.name scope
                         sprintf "%s[]" n
-            
+
+                    | Function types ->
+                        types |> Seq.map (fun t -> t.name scope) |> String.concat " -> "
+
+                        
             member x.ContainsGenericParameter =
                 match x with
                     | Array t -> t.ContainsGenericParameter
                     | Tuple ts -> ts |> List.exists (fun t -> t.ContainsGenericParameter)
                     | Reference(_,ts) -> ts |> Array.exists (fun t -> t.ContainsGenericParameter)
                     | GenericParameter _ -> true
- 
+                    | Function ts -> ts |> List.exists (fun t -> t.ContainsGenericParameter)
+    
     and Field =
         {
             name            : string
@@ -364,6 +374,10 @@ module TypeTree =
                 | Array t ->
                     Array (substitute m t)
         
+                | Function ts ->
+                    Function (ts |> List.map (substitute m))
+                    
+
         let rec ofFSharpType (needPrimaryKey : TypeRef -> unit) (simple : Map<string, bool>) (t : FSharpType) =
             if t.IsGenericParameter then
                 GenericParameter t.GenericParameter.Name
@@ -373,6 +387,13 @@ module TypeTree =
                 if t.IsTupleType then
                     Tuple (Seq.toList targs)
 
+                elif t.IsFunctionType then 
+                    let targs = t.GenericArguments |> Seq.map (ofFSharpType needPrimaryKey simple)
+                    Function (Seq.toList targs)
+
+                elif t.IsAbbreviation then
+                    ofFSharpType needPrimaryKey simple t.AbbreviatedType
+                    
                 elif t.HasTypeDefinition then
                     let def = t.TypeDefinition
 
@@ -443,8 +464,28 @@ module TypeTree =
         let rec ofTypeRef (needPrimaryKey : TypeRef -> unit) (simple : Map<string, bool>) (isByRef : bool) (rt : TypeRef) : DomainTypeDescription =
             match rt with
                 
-                | Array _ ->
-                    failwith "not implemented"
+                | Array inner ->
+                    let innerDesc = ofTypeRef needPrimaryKey simple false inner
+                    if not innerDesc.aSimple then
+                        failwith "Arrays cannot contain domain-types"
+                    else
+                        {
+                            aSimple = true
+                            aType = TypeDef.imod |> TypeDef.instantiate [rt]
+                            aInit = fun _ -> sprintf "ResetMod.Create(%s)"
+                            aUpdate = fun _ -> sprintf "ResetMod.Update(%s,%s)"
+                            aView = fun _ -> sprintf "%s :> IMod<_>"
+                        }
+
+                | Function ts ->
+                    {
+                        aSimple = true
+                        aType = TypeDef.imod |> TypeDef.instantiate [rt]
+                        aInit = fun _ -> sprintf "ResetMod.Create(%s)"
+                        aUpdate = fun _ -> sprintf "ResetMod.Update(%s,%s)"
+                        aView = fun _ -> sprintf "%s :> IMod<_>"
+                    }
+                    
 
                 | GenericParameter n ->
                     let isSimple = 
@@ -856,7 +897,8 @@ module PreprocessingNew =
                     do! line ""
 
                     for f in fields do
-                        if f.nonIncremental then ()
+                        if f.nonIncremental then 
+                            ()
                         elif f.treatAsValue then
                             do! line "_%s.Update(v.%s)" f.name f.name
                         else
@@ -1445,98 +1487,9 @@ module Preprocessing =
 
             let immutableName = FSharpEntity.immutableName e
             let defName = FSharpEntity.mutableNameDef e
-//            let targs = e.GenericParameters
-//            if targs.Count > 0 then
-//                let range = e.DeclarationLocation
-//                do! error 5432 range "cannot compile generic domain type %s" e.DisplayName
 
             if e.IsFSharpRecord then
                 do! PreprocessingNew.generateMutableType e
-//                let! annotatedFields =
-//                    e.FSharpFields
-//                        |> Seq.toList
-//                        |> List.chooseC (fun f ->
-//                            codegen {
-//                                if FSharpField.nonIncremental f then
-//                                    return None
-//                                else
-//                                    let! adapter = 
-//                                        if FSharpField.treatAsValue f then
-//                                            codegen { return valueAdapter }
-//                                        else
-//                                            generateAdapter f.FieldType
-//
-//                                    let inputName = sprintf "__initial.%s" f.DisplayName
-//                                    let init = sprintf "let _%s = %s" f.DisplayName (adapter.aInit inputName)
-//
-//                                    let access = adapter.aUpcast ("_" + f.DisplayName)
-//
-//                                    return Some (f.DisplayName, init, access)
-//                            }
-//                    )
-//                    
-//                match annotatedFields with
-//                    | [] -> 
-//                        ()
-//                    | _ ->
-//                        do! line "[<StructuredFormatDisplay(\"{AsString}\")>]"
-//                        do! line "[<System.Runtime.CompilerServices.Extension>]"
-//                        let typeDef = scope "type %s private(__initial : %s) =" defName immutableName
-//                        do! typeDef {
-//                            do! line "let mutable __current = __initial"
-//
-//                            for (_, init, _) in annotatedFields do
-//                                do! line "%s" init
-//                        
-//                            do! line ""
-//
-//                            for (fname, _, access) in annotatedFields do
-//                                do! line "member x.%s = %s" fname access
-//
-//                            for f in e.FSharpFields do
-//                                if FSharpField.nonIncremental f then
-//                                    do! line "member x.%s = __initial.%s" f.DisplayName f.DisplayName
-//                    
-//                            do! line ""
-//
-//                            
-//                            let apply = scope "member x.Update(__model : %s) =" immutableName
-//                            do! apply {
-//                                do! line "if not (Object.ReferenceEquals(__model, __current)) then"
-//                                do! push
-//
-//                                do! line "__current <- __model"
-//                
-//                                for f in e.FSharpFields do
-//                                    if not (FSharpField.nonIncremental f) then
-//                                        let fName = f.DisplayName
-//
-//                                        do! updateExpression f.FieldType ("_" + fName) ("__model." + fName)
-//                                do! pop
-//                            }
-//                            do! line ""
-//                            do! line "static member Update(__self : %s, __model : %s) = __self.Update(__model)" defName immutableName
-//                            do! line ""
-//                            do! line "static member Create(initial) = %s(initial)" defName
-//                            do! line ""
-//                            do! line "override x.ToString() = __current.ToString()"
-//                            do! line "member private x.AsString = sprintf \"%%A\" __current"
-//
-//                        }
-//
-//                        do! line ""
-//                        do! line ""
-//
-//
-//                        do! line "[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]"
-//                        let mModule = scope "module %s =" defName
-//                        do! mModule {
-//                            for (name,_,_) in annotatedFields do
-//                                do! line "let inline %s (m : %s) = m.%s" name defName name
-//                        }
-//
-//                        do! line ""
-//                        do! line ""
 
             elif e.IsFSharpUnion then   
                     

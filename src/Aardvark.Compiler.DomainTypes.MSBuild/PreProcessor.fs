@@ -83,10 +83,7 @@ type Preprocess() =
         if debug then
             System.Diagnostics.Debugger.Launch() |> ignore
             
-            
-        //x.Log.LogWarning(sprintf "%d references" references.Length)
-        //for r in references do
-        //    x.Log.LogWarning(r)
+           
 
         let isNetFramework = references |> Array.exists (fun r -> Path.GetFileNameWithoutExtension(r).ToLower() = "mscorlib")
         let refs = Set.ofArray references
