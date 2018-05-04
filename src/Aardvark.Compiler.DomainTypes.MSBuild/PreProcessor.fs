@@ -90,18 +90,23 @@ type Preprocess() =
     let mutable projectFile = ""
     let mutable results : string[] = [||]
     let mutable framework : string = ""
+    let mutable outputType : string = ""
 
     override x.Execute() =
         if debug then
             System.Diagnostics.Debugger.Launch() |> ignore
             
-           
+        let targetType = 
+            match outputType.ToLower() with
+                | "winexe" -> TargetType.WinExe
+                | "exe" -> TargetType.Exe
+                | _ -> TargetType.Library
 
         let isNetFramework = references |> Array.exists (fun r -> Path.GetFileNameWithoutExtension(r).ToLower() = "mscorlib")
         let refs = Set.ofArray references
         
 
-        let prep = Preprocessing.runFileByFile isNetFramework x.Log.Log projectFile refs (Array.toList files) |> Async.RunSynchronously
+        let prep = Preprocessing.runFileByFile isNetFramework x.Log.Log projectFile targetType refs (Array.toList files) |> Async.RunSynchronously
         results <- files
         match prep with
             | Some files -> 
@@ -174,6 +179,10 @@ type Preprocess() =
     member x.TargetFramework
         with get() = framework
         and set i = framework <- i
+
+    member x.OutputType
+        with get() = outputType
+        and set t = outputType <- t
 
     [<Required>]
     member x.Files

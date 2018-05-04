@@ -23,7 +23,7 @@ type MyState =
     { 
         tree : Tree<Thing>
         intTree : Tree<int> 
-        blubber : hset<U2>    
+        blubber : hset<Thing>    
     }
 
 

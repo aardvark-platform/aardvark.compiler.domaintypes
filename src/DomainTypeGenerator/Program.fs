@@ -21,7 +21,7 @@ let main argv =
             true 
             log
             @"C:\Development\PRo3D\src\PRo3D.Viewer\PRo3D.Viewer.fsproj"
-
+            TargetType.Exe
             (Set.ofList [
                 @"C:\Development\PRo3D\packages\Aardium\lib\netstandard2.0\Aardium.dll"
                 @"C:\Development\PRo3D\packages\Aardvark.Application\lib\netstandard2.0\Aardvark.Application.dll"

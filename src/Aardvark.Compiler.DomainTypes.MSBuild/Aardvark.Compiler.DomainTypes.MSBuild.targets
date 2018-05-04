@@ -8,7 +8,7 @@
     <ItemGroup>
       <OldItems Include="@(Compile)" />
     </ItemGroup>
-    <Preprocess TargetFramework="$(TargetFramework)" Debug="$(DebugHate)" Files="@(OldItems)" References="@(_ResolveAssemblyReferenceResolvedFiles)" ProjectFile="$(MSBuildProjectFullPath)">
+    <Preprocess TargetFramework="$(TargetFramework)" Debug="$(DebugHate)" Files="@(OldItems)" References="@(_ResolveAssemblyReferenceResolvedFiles)" ProjectFile="$(MSBuildProjectFullPath)" OutputType="$(OutputType)">
       <Output TaskParameter="Results" ItemName="Results" />
     </Preprocess>
     <ItemGroup>

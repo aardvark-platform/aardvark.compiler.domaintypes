@@ -962,13 +962,13 @@ module PreprocessingNew =
                     match e with
                         | Reference(def,_) ->
                             let r = def.range
-                            do! warn 4321 r "%s should have a primary key since it's used in an aset (in the definition of %s)" def.name (typeDef.relativeName def)
+                            do! warn 1234 r "%s should have a primary key since it's used in an aset (in the definition of %s)" def.name (typeDef.relativeName def)
                         | _ ->
                             ()
 
             elif e.IsFSharpUnion then
                 if typeDef.IsGeneric then
-                    do! error 4321 e.DeclarationLocation "generics not implementes yet: %s" (typeDef.fullName "")
+                    do! error 1234 e.DeclarationLocation "generics not implementes yet: %s" (typeDef.fullName "")
                 else
 //                    let iTypeRef = typeDef |> TypeDef.instantiate []
 //                    let mTypeRef = { typeDef with kind = Resettable; name = "M" + typeDef.name; path = "Mutable" :: typeDef.path }
@@ -1006,12 +1006,17 @@ module PreprocessingNew =
 
 
 
+type TargetType =
+    | Exe
+    | WinExe
+    | Library
+
 module Preprocessing =
 
 
     let domainAttName = "Aardvark.Base.Incremental.DomainTypeAttribute"
 
-    let getProjectOptions (isNetFramework : bool) (fsprojFile : string) (references : list<string>) (files : list<string>) =
+    let getProjectOptions (isNetFramework : bool) (fsprojFile : string) (target : TargetType) (references : list<string>) (files : list<string>) =
         //let args =
         //    [|
         //        yield "--simpleresolution"
@@ -1026,6 +1031,9 @@ module Preprocessing =
         //        yield! files 
         //    |]
 
+
+
+
         {
             ProjectFileName = fsprojFile
             SourceFiles = List.toArray files
@@ -1037,6 +1045,11 @@ module Preprocessing =
                     //yield "--flaterrors"
                     yield "--platform:anycpu"
                     yield "--debug-"
+
+                    match target with
+                        | TargetType.Exe -> yield "--target:exe"
+                        | TargetType.WinExe -> yield "--target:winexe"
+                        | TargetType.Library -> yield "--target:library"
 
                     //yield "--optimize-"
                     //yield "--crossoptimize-"
@@ -1396,7 +1409,7 @@ module Preprocessing =
                             getKey <- sprintf "(fun (v : %s) -> v.%s :> obj)" t.TypeDefinition.FullName field
                         | None ->
                             let range = FSharpType.range t
-                            do! warn 4321 range "the domain type %s has no field marked with PrimaryKeyAttribute but is used inside a hset. peformance could suffer. please consider adding a primary key." (FSharpType.prettyName t)
+                            do! warn 1234 range "the domain type %s has no field marked with PrimaryKeyAttribute but is used inside a hset. peformance could suffer. please consider adding a primary key." (FSharpType.prettyName t)
                  
 
                     return {
@@ -1808,7 +1821,7 @@ module Preprocessing =
                do! generateMutableModel file e
         }
 
-    let runFileByFileWithOptions (log : ErrorInfo -> unit) (options : FSharpProjectOptions) =
+    let runFileByFileWithOptions (log : ErrorInfo -> unit) (target : TargetType) (options : FSharpProjectOptions) =
         async {
             let checker = FSharpChecker.Create(keepAssemblyContents = true, keepAllBackgroundResolutions = false)
             checker.ImplicitlyStartBackgroundWork <- false
@@ -1818,6 +1831,14 @@ module Preprocessing =
             let files = System.Collections.Generic.List<string>()
             let options = { options with SourceFiles = options.SourceFiles |> Array.collect (fun f -> [|f;Path.ChangeExtension(f, ".g.fs")|]) }
 
+            let options =
+                match target with
+                    | TargetType.Exe | TargetType.WinExe -> 
+                        if options.SourceFiles.Length > 0 then { options with SourceFiles = options.SourceFiles |> Array.take (options.SourceFiles.Length - 1) }
+                        else options
+                    | TargetType.Library ->
+                        options
+                        
             for file in options.SourceFiles do
                 if worked && File.Exists file && not (file.EndsWith ".g.fs") then
                     let outFile = System.IO.Path.ChangeExtension(file, ".g.fs")
@@ -1942,17 +1963,27 @@ module Preprocessing =
                 return None
         }
 
-    let runFileByFileInternal (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (references : Set<string>) (files : list<string>) =
+    let runFileByFileInternal (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (target : TargetType) (references : Set<string>) (files : list<string>) =
         async {
             let dir = Path.GetDirectoryName fsProjPath
 
-            let options = getProjectOptions isNetFramework fsProjPath (Set.toList references) files
+            let options = getProjectOptions isNetFramework fsProjPath target (Set.toList references) files
             
+            //log {
+            //    severity    = Severity.Warning
+            //    file        = fsProjPath
+            //    startLine   = -1
+            //    endLine     = -1
+            //    startColumn = -1
+            //    endColumn   = -1
+            //    message     = sprintf "OutputType is: %A" target
+            //    code        = 1234
+            //}
 
-            return! runFileByFileWithOptions log options
+            return! runFileByFileWithOptions log target options
         }
 
-    let runFileByFile (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (references : Set<string>) (files : list<string>) =
+    let runFileByFile (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string)  (target : TargetType) (references : Set<string>) (files : list<string>) =
         let dir = Path.GetDirectoryName fsProjPath
         let outDir = Path.Combine(dir, "..", "..", "bin", "Debug")
       
@@ -1977,7 +2008,7 @@ module Preprocessing =
                     Path.Combine(dir, r)
             )
 
-        runFileByFileInternal isNetFramework log fsProjPath references files
+        runFileByFileInternal isNetFramework log fsProjPath target references files
 
 
     let runWithOptions (log : ErrorInfo -> unit) (options : FSharpProjectOptions) =
@@ -2063,17 +2094,17 @@ module Preprocessing =
                 return Worked code
         }
 
-    let runInternal (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (references : Set<string>) (files : list<string>) =
+    let runInternal (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (target : TargetType) (references : Set<string>) (files : list<string>) =
         async {
             let dir = Path.GetDirectoryName fsProjPath
 
-            let options = getProjectOptions isNetFramework fsProjPath (Set.toList references) files
+            let options = getProjectOptions isNetFramework fsProjPath target (Set.toList references) files
             
 
             return! runWithOptions log options
         }
 
-    let run (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (references : Set<string>) (files : list<string>) =
+    let run (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (target : TargetType) (references : Set<string>) (files : list<string>) =
         let dir = Path.GetDirectoryName fsProjPath
         let outDir = Path.Combine(dir, "..", "..", "bin", "Debug")
       
@@ -2098,4 +2129,4 @@ module Preprocessing =
                     Path.Combine(dir, r)
             )
 
-        runInternal isNetFramework log fsProjPath references files
+        runInternal isNetFramework log fsProjPath target references files
