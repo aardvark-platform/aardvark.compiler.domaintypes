@@ -1009,25 +1009,54 @@ module PreprocessingNew =
 module Preprocessing =
 
 
-    let checker = FSharpChecker.Create(keepAssemblyContents = true)
     let domainAttName = "Aardvark.Base.Incremental.DomainTypeAttribute"
 
     let getProjectOptions (isNetFramework : bool) (fsprojFile : string) (references : list<string>) (files : list<string>) =
-        let args =
-            [|
-                yield "--simpleresolution"
-                yield "--noframework"
-                yield "--fullpaths"
-                yield "--flaterrors"
-                yield "--platform:anycpu"
+        //let args =
+        //    [|
+        //        yield "--simpleresolution"
+        //        yield "--noframework"
+        //        yield "--fullpaths"
+        //        yield "--flaterrors"
+        //        yield "--platform:anycpu"
 
-                for r in references do
-                    yield "-r:" + r 
+        //        for r in references do
+        //            yield "-r:" + r 
 
-                yield! files 
-            |]
+        //        yield! files 
+        //    |]
 
-        checker.GetProjectOptionsFromCommandLineArgs(fsprojFile, args)
+        {
+            ProjectFileName = fsprojFile
+            SourceFiles = List.toArray files
+            OtherOptions =
+                [|
+                    //yield "--simpleresolution"
+                    yield "--noframework"
+                    yield "--fullpaths"
+                    //yield "--flaterrors"
+                    yield "--platform:anycpu"
+                    yield "--debug-"
+
+                    //yield "--optimize-"
+                    //yield "--crossoptimize-"
+                    //yield "--tailcalls-"
+                    for r in references do
+                        yield "-r:" + r + ""
+
+
+                |]
+
+            ReferencedProjects = [||]
+            IsIncompleteTypeCheckEnvironment = true
+            UseScriptResolutionRules = false
+            LoadTime = DateTime.Now
+            UnresolvedReferences = None
+            ExtraProjectInfo = None
+            OriginalLoadReferences = []
+            Stamp = None //Some 1L
+        }
+        //checker.GetProjectOptionsFromCommandLineArgs(fsprojFile, args)
 
     module FSharpAttribute =
         let isDomainAttribute (a : FSharpAttribute) =
@@ -1779,8 +1808,224 @@ module Preprocessing =
                do! generateMutableModel file e
         }
 
+    let runFileByFileWithOptions (log : ErrorInfo -> unit) (options : FSharpProjectOptions) =
+        async {
+            let checker = FSharpChecker.Create(keepAssemblyContents = true, keepAllBackgroundResolutions = false)
+            checker.ImplicitlyStartBackgroundWork <- false
+
+            let sw = System.Diagnostics.Stopwatch()
+            let mutable worked = true
+            let files = System.Collections.Generic.List<string>()
+            let options = { options with SourceFiles = options.SourceFiles |> Array.collect (fun f -> [|f;Path.ChangeExtension(f, ".g.fs")|]) }
+
+            for file in options.SourceFiles do
+                if worked && File.Exists file && not (file.EndsWith ".g.fs") then
+                    let outFile = System.IO.Path.ChangeExtension(file, ".g.fs")
+
+                    sw.Restart()
+                    let! (parse, check) = checker.ParseAndCheckFileInProject(file, 0, File.ReadAllText file, options)
+                    sw.Stop()
+
+
+                    log {
+                        severity    = Severity.Debug
+                        file        = file
+                        startLine   = -1
+                        endLine     = -1
+                        startColumn = -1
+                        endColumn   = -1
+                        message     = sprintf "parsing took: %.3fs" sw.Elapsed.TotalSeconds
+                        code        = 1234
+                    }
+
+                    files.Add file
+                    match check with
+                        | FSharpCheckFileAnswer.Succeeded answer ->
+                            let errors = answer.Errors |> Array.filter (fun e -> e.Severity = FSharpErrorSeverity.Error)
+                            let hasErrors = errors.Length > 0
+                            if hasErrors then
+                                log {
+                                    severity    = Severity.Warning
+                                    file        = file
+                                    startLine   = -1
+                                    endLine     = -1
+                                    startColumn = -1
+                                    endColumn   = -1
+                                    message     = sprintf "typecheck returned errors"
+                                    code        = 1234
+                                }
+
+                                answer.Errors 
+                                    |> Array.iter (ErrorInfo.ofFSharpErrorInfo >> ErrorInfo.withSeverity Severity.Info >> log)
+
+
+                            match answer.ImplementationFile with
+                                | Some impl ->
+                                    let domainTypes = impl.Declarations |> Seq.choose buildEntityTree |> Seq.toList
+                                    match domainTypes with
+                                        | [] -> ()
+                                        | domainTypes -> 
+                                            let file = impl.FileName
+                                            let c = generateMutableModels file domainTypes
+                                            let state, info = 
+                                                c.generate {
+                                                    scope = []
+                                                    result = System.Text.StringBuilder()
+                                                    indent = ""
+                                                    warnings = []
+                                                }
+
+                                            state.warnings |> List.iter log
+                                            match info with
+                                                | Success () ->
+                                                    let code = state.result.ToString()
+                                                    File.WriteAllText(outFile, code)
+
+                                                    
+                                                    log {
+                                                        severity    = Severity.Info
+                                                        file        = file
+                                                        startLine   = -1
+                                                        endLine     = -1
+                                                        startColumn = -1
+                                                        endColumn   = -1
+                                                        message     = sprintf "generated %A" outFile
+                                                        code        = 1234
+                                                    }
+
+
+                                                    files.Add outFile
+                        
+                                                | Error e ->
+                                                    if File.Exists outFile then File.Delete outFile
+                                                    log e
+                                                    worked <- false
+
+                                            ()
+                                    ()
+                                | None ->
+                                    log {
+                                        severity    = Severity.Warning
+                                        file        = file
+                                        startLine   = -1
+                                        endLine     = -1
+                                        startColumn = -1
+                                        endColumn   = -1
+                                        message     = "could not get implementation contents"
+                                        code        = 1234
+                                    }
+
+                            ()
+                        | FSharpCheckFileAnswer.Aborted ->
+                            log {
+                                severity    = Severity.Error
+                                file        = file
+                                startLine   = -1
+                                endLine     = -1
+                                startColumn = -1
+                                endColumn   = -1
+                                message     = "parsing failed with critical errors"
+                                code        = 1234
+                            }
+                            parse.Errors 
+                                |> Array.iter (ErrorInfo.ofFSharpErrorInfo >> ErrorInfo.withSeverity Severity.Info >> log)
+                            worked <- false
+
+                            ()
+                    
+            //checker.InvalidateAll()
+            checker.ClearLanguageServiceRootCachesAndCollectAndFinalizeAllTransients()
+            
+            if worked then
+                return Some (files.ToArray())
+            else
+                return None
+        }
+
+    let runFileByFileInternal (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (references : Set<string>) (files : list<string>) =
+        async {
+            let dir = Path.GetDirectoryName fsProjPath
+
+            let options = getProjectOptions isNetFramework fsProjPath (Set.toList references) files
+            
+
+            return! runFileByFileWithOptions log options
+        }
+
+    let runFileByFile (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (references : Set<string>) (files : list<string>) =
+        let dir = Path.GetDirectoryName fsProjPath
+        let outDir = Path.Combine(dir, "..", "..", "bin", "Debug")
+      
+        let references = 
+            references |> Set.map (fun r ->
+                if Path.IsPathRooted r then 
+                    r
+                else 
+                    let rFile = Path.Combine(outDir, r)
+                    if File.Exists rFile then rFile
+                    else 
+                        let rFile = Path.Combine(dir, r)
+                        if File.Exists rFile then rFile
+                        else r
+            )
+            
+        let files = 
+            files |> List.map (fun r ->
+                if Path.IsPathRooted r then 
+                    r
+                else 
+                    Path.Combine(dir, r)
+            )
+
+        runFileByFileInternal isNetFramework log fsProjPath references files
+
+
     let runWithOptions (log : ErrorInfo -> unit) (options : FSharpProjectOptions) =
         async {
+            let mutable options = options
+            
+            let checker = FSharpChecker.Create(keepAssemblyContents = true)
+
+            let originalFiles = options.SourceFiles
+            for file in originalFiles do
+                let! (parse, check) = checker.ParseAndCheckFileInProject(file, 0, File.ReadAllText file, options)
+                match check with
+                    | FSharpCheckFileAnswer.Succeeded answer ->
+                        match answer.ImplementationFile with
+                            | Some impl ->
+                                let domainTypes = impl.Declarations |> Seq.choose buildEntityTree |> Seq.toList
+                                match domainTypes with
+                                    | [] -> ()
+                                    | domainTypes -> 
+                                        let file = impl.FileName
+                                        let c = generateMutableModels file domainTypes
+                                        let state, info = 
+                                            c.generate {
+                                                scope = []
+                                                result = System.Text.StringBuilder()
+                                                indent = ""
+                                                warnings = []
+                                            }
+
+                                        match info with
+                                            | Success () ->
+                                                let code = state.result.ToString()
+                                                let outFile = System.IO.Path.ChangeExtension(file, ".g.fs")
+                                                File.WriteAllText(outFile, code)
+                                                options <- { options with Stamp = options.Stamp |> Option.map (fun a -> 1L + a); SourceFiles = options.SourceFiles |> Array.collect (fun f -> if f = file then [|f; outFile|] else [|f|]) }
+                                            | Error e ->
+                                                failwithf "%A" (state.warnings, e)
+
+                                        ()
+                                ()
+                            | None ->
+                                ()
+                        ()
+                    | _ ->
+                        ()
+                ()
+
+
             let! res = checker.ParseAndCheckProject(options)
             
             if res.HasCriticalErrors then
@@ -1821,7 +2066,6 @@ module Preprocessing =
     let runInternal (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (references : Set<string>) (files : list<string>) =
         async {
             let dir = Path.GetDirectoryName fsProjPath
-            let outDir = Path.Combine(dir, "..", "..", "bin", "Debug")
 
             let options = getProjectOptions isNetFramework fsProjPath (Set.toList references) files
             

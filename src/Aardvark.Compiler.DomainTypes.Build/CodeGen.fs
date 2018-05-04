@@ -7,6 +7,7 @@ open Microsoft.FSharp.Compiler.Range
 open Microsoft.FSharp.Compiler.SourceCodeServices
 
 type Severity =
+    | Debug
     | Info
     | Warning
     | Error
@@ -41,6 +42,17 @@ module ErrorInfo =
             endColumn = err.EndColumn
             message = err.Message
             code = err.ErrorNumber
+        }
+
+    let withSeverity (v : Severity) (err : ErrorInfo) = 
+        let prefix =
+            match err.severity with
+                | Severity.Warning -> "WARNING: "
+                | Severity.Error -> "ERROR: "
+                | _ -> ""
+        { err with 
+            severity = v 
+            message = prefix + err.message
         }
 
 type Result<'a> = 
