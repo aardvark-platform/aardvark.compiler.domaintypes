@@ -62,11 +62,6 @@ type State =
         testBlub : option<int>
 
         shouldBeU : hset<U>
-
-        seppy : int[]
-
-        [<NonIncremental>]
-        funny : int -> int -> float
     }
 
 [<DomainType>]

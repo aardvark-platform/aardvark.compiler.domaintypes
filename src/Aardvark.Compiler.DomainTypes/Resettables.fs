@@ -21,9 +21,12 @@ type ResetMod<'a>(value : 'a) =
             x.MarkOutdated()
 
     member x.Update(v : 'a) =
-        if not <| Object.Equals(v, value) then
-            value <- v
-            x.MarkOutdated()
+        if not <| Object.ReferenceEquals(v, value) then
+            if Object.Equals(v, value) then
+                value <- v
+            else
+                value <- v
+                x.MarkOutdated()
         
 
     member x.GetValue(token : AdaptiveToken) =
@@ -54,9 +57,10 @@ type ResetSet<'a>(initial : hset<'a>) =
     let mutable current = initial
 
     member x.Update(values : hset<'a>) =
-        let ops = HSet.computeDelta current values
-        current <- values
-        history.Perform ops |> ignore
+        if not (Object.ReferenceEquals(values, current)) then
+            let ops = HSet.computeDelta current values
+            current <- values
+            history.Perform ops |> ignore
 
     override x.ToString() =
         current.ToString()
@@ -114,8 +118,9 @@ type ResetMapSet<'k, 'v>(getId : 'k -> obj, initial : hset<'k>, create : 'k -> '
     do update initial
 
     member x.Update(keys : hset<'k>) =
-        update keys
-
+        if not (Object.ReferenceEquals(keys, current)) then
+            update keys
+    
     override x.ToString() =
         current.ToString()
         
@@ -138,9 +143,10 @@ type ResetList<'a>(initial : plist<'a>) =
     let mutable current = initial
 
     member x.Update(values : plist<'a>) =
-        let delta = plist.ComputeDeltas(current, values)
-        history.Perform delta |> ignore
-        current <- values
+        if not (Object.ReferenceEquals(values, current)) then
+            let delta = plist.ComputeDeltas(current, values)
+            history.Perform delta |> ignore
+            current <- values
 
     interface alist<'a> with
         member x.IsConstant = false
@@ -190,7 +196,8 @@ type ResetMapList<'k, 'v>(initial : plist<'k>, create : Index -> 'k -> 'v, updat
     do update initial
 
     member x.Update(keys : plist<'k>) =
-        update keys
+        if not (Object.ReferenceEquals(keys, current)) then
+            update keys
 
     override x.ToString() =
         current.ToString()
@@ -228,9 +235,10 @@ type ResetMap<'k, 'v>(initial : hmap<'k, 'v>) =
     let mutable current = initial
 
     member x.Update(values : hmap<'k, 'v>) =
-        let delta = HMap.computeDelta current values
-        history.Perform delta |> ignore
-        current <- values
+        if not (Object.ReferenceEquals(values, current)) then
+            let delta = HMap.computeDelta current values
+            history.Perform delta |> ignore
+            current <- values
 
     interface amap<'k, 'v> with
         member x.IsConstant = false
@@ -280,7 +288,8 @@ type ResetMapMap<'a, 'b, 'v>(initial : hmap<'a, 'b>, create : 'a -> 'b -> 'v, up
     do update initial
 
     member x.Update(keys : hmap<'a, 'b>) =
-        update keys
+        if not (Object.ReferenceEquals(Object, current)) then
+            update keys
 
     override x.ToString() =
         current.ToString()

@@ -40,7 +40,11 @@ module TypeTree =
 
         module FSharpAttribute =
             let isDomainAttribute (a : FSharpAttribute) =
-                a.AttributeType.FullName = domainAttName
+                try
+                    a.AttributeType.FullName = domainAttName
+                with e -> 
+                    printfn "%A" e
+                    false
                 
             let isPrimaryKey (a : FSharpAttribute) =
                 a.AttributeType.FullName = primAttName
@@ -147,6 +151,7 @@ module TypeTree =
         | GenericParameter of name : string
         | Reference of def : TypeDef * targs : array<TypeRef>
         | Tuple of list<TypeRef>
+        | Function of list<TypeRef>
         | Array of TypeRef with
 
             member x.genericParameters =
@@ -155,6 +160,7 @@ module TypeTree =
                     | GenericParameter p -> Set.singleton p
                     | Tuple ts -> ts |> List.map (fun t -> t.genericParameters) |> Set.unionMany
                     | Array t -> t.genericParameters
+                    | Function ts -> ts |> List.map (fun t -> t.genericParameters) |> Set.unionMany
 
             member x.fullName (scope : string) = 
                 match x with
@@ -176,6 +182,9 @@ module TypeTree =
                         let n = t.fullName scope
                         sprintf "%s[]" n
 
+                    | Function types ->
+                        types |> Seq.map (fun t -> t.fullName scope) |> String.concat " -> "
+
             member x.name (scope : string) =
                 match x with
                     | GenericParameter n ->
@@ -184,25 +193,30 @@ module TypeTree =
                     | Reference(def,targs) ->
                         let dn = def.name
                         if targs.Length > 0 then
-                            let targs = targs |> Seq.map (fun t -> t.fullName scope) |> String.concat ","
+                            let targs = targs |> Seq.map (fun t -> t.name scope) |> String.concat ","
                             sprintf "%s<%s>" dn targs
                         else
                             dn
                     | Tuple types ->
-                        let types = types |> Seq.map (fun t -> t.fullName scope) |> String.concat " * "
+                        let types = types |> Seq.map (fun t -> t.name scope) |> String.concat " * "
                         sprintf "(%s)" types
 
                     | Array t ->
-                        let n = t.fullName scope
+                        let n = t.name scope
                         sprintf "%s[]" n
-            
+
+                    | Function types ->
+                        types |> Seq.map (fun t -> t.name scope) |> String.concat " -> "
+
+                        
             member x.ContainsGenericParameter =
                 match x with
                     | Array t -> t.ContainsGenericParameter
                     | Tuple ts -> ts |> List.exists (fun t -> t.ContainsGenericParameter)
                     | Reference(_,ts) -> ts |> Array.exists (fun t -> t.ContainsGenericParameter)
                     | GenericParameter _ -> true
- 
+                    | Function ts -> ts |> List.exists (fun t -> t.ContainsGenericParameter)
+    
     and Field =
         {
             name            : string
@@ -360,6 +374,10 @@ module TypeTree =
                 | Array t ->
                     Array (substitute m t)
         
+                | Function ts ->
+                    Function (ts |> List.map (substitute m))
+                    
+
         let rec ofFSharpType (needPrimaryKey : TypeRef -> unit) (simple : Map<string, bool>) (t : FSharpType) =
             if t.IsGenericParameter then
                 GenericParameter t.GenericParameter.Name
@@ -369,6 +387,13 @@ module TypeTree =
                 if t.IsTupleType then
                     Tuple (Seq.toList targs)
 
+                elif t.IsFunctionType then 
+                    let targs = t.GenericArguments |> Seq.map (ofFSharpType needPrimaryKey simple)
+                    Function (Seq.toList targs)
+
+                elif t.IsAbbreviation then
+                    ofFSharpType needPrimaryKey simple t.AbbreviatedType
+                    
                 elif t.HasTypeDefinition then
                     let def = t.TypeDefinition
 
@@ -439,8 +464,28 @@ module TypeTree =
         let rec ofTypeRef (needPrimaryKey : TypeRef -> unit) (simple : Map<string, bool>) (isByRef : bool) (rt : TypeRef) : DomainTypeDescription =
             match rt with
                 
-                | Array _ ->
-                    failwith "not implemented"
+                | Array inner ->
+                    let innerDesc = ofTypeRef needPrimaryKey simple false inner
+                    if not innerDesc.aSimple then
+                        failwith "Arrays cannot contain domain-types"
+                    else
+                        {
+                            aSimple = true
+                            aType = TypeDef.imod |> TypeDef.instantiate [rt]
+                            aInit = fun _ -> sprintf "ResetMod.Create(%s)"
+                            aUpdate = fun _ -> sprintf "ResetMod.Update(%s,%s)"
+                            aView = fun _ -> sprintf "%s :> IMod<_>"
+                        }
+
+                | Function ts ->
+                    {
+                        aSimple = true
+                        aType = TypeDef.imod |> TypeDef.instantiate [rt]
+                        aInit = fun _ -> sprintf "ResetMod.Create(%s)"
+                        aUpdate = fun _ -> sprintf "ResetMod.Update(%s,%s)"
+                        aView = fun _ -> sprintf "%s :> IMod<_>"
+                    }
+                    
 
                 | GenericParameter n ->
                     let isSimple = 
@@ -852,7 +897,8 @@ module PreprocessingNew =
                     do! line ""
 
                     for f in fields do
-                        if f.nonIncremental then ()
+                        if f.nonIncremental then 
+                            ()
                         elif f.treatAsValue then
                             do! line "_%s.Update(v.%s)" f.name f.name
                         else
@@ -916,13 +962,13 @@ module PreprocessingNew =
                     match e with
                         | Reference(def,_) ->
                             let r = def.range
-                            do! warn 4321 r "%s should have a primary key since it's used in an aset (in the definition of %s)" def.name (typeDef.relativeName def)
+                            do! warn 1234 r "%s should have a primary key since it's used in an aset (in the definition of %s)" def.name (typeDef.relativeName def)
                         | _ ->
                             ()
 
             elif e.IsFSharpUnion then
                 if typeDef.IsGeneric then
-                    do! error 4321 e.DeclarationLocation "generics not implementes yet: %s" (typeDef.fullName "")
+                    do! error 1234 e.DeclarationLocation "generics not implementes yet: %s" (typeDef.fullName "")
                 else
 //                    let iTypeRef = typeDef |> TypeDef.instantiate []
 //                    let mTypeRef = { typeDef with kind = Resettable; name = "M" + typeDef.name; path = "Mutable" :: typeDef.path }
@@ -960,29 +1006,70 @@ module PreprocessingNew =
 
 
 
+type TargetType =
+    | Exe
+    | WinExe
+    | Library
+
 module Preprocessing =
 
 
-    let checker = FSharpChecker.Create(keepAssemblyContents = true)
-
     let domainAttName = "Aardvark.Base.Incremental.DomainTypeAttribute"
 
-    let getProjectOptions (fsprojFile : string) (references : list<string>) (files : list<string>) =
-        let args =
-            [|
-                yield "--simpleresolution"
-                yield "--noframework"
-                yield "--fullpaths"
-                yield "--flaterrors"
-                yield "--platform:anycpu"
+    let getProjectOptions (isNetFramework : bool) (fsprojFile : string) (target : TargetType) (references : list<string>) (files : list<string>) =
+        //let args =
+        //    [|
+        //        yield "--simpleresolution"
+        //        yield "--noframework"
+        //        yield "--fullpaths"
+        //        yield "--flaterrors"
+        //        yield "--platform:anycpu"
 
-                for r in references do
-                    yield "-r:" + r 
+        //        for r in references do
+        //            yield "-r:" + r 
 
-                yield! files 
-            |]
+        //        yield! files 
+        //    |]
 
-        checker.GetProjectOptionsFromCommandLineArgs(fsprojFile, args)
+
+
+
+        {
+            ProjectFileName = fsprojFile
+            SourceFiles = List.toArray files
+            OtherOptions =
+                [|
+                    //yield "--simpleresolution"
+                    yield "--noframework"
+                    yield "--fullpaths"
+                    //yield "--flaterrors"
+                    yield "--platform:anycpu"
+                    yield "--debug-"
+
+                    match target with
+                        | TargetType.Exe -> yield "--target:exe"
+                        | TargetType.WinExe -> yield "--target:winexe"
+                        | TargetType.Library -> yield "--target:library"
+
+                    //yield "--optimize-"
+                    //yield "--crossoptimize-"
+                    //yield "--tailcalls-"
+                    for r in references do
+                        yield "-r:" + r + ""
+
+
+                |]
+
+            ReferencedProjects = [||]
+            IsIncompleteTypeCheckEnvironment = true
+            UseScriptResolutionRules = false
+            LoadTime = DateTime.Now
+            UnresolvedReferences = None
+            ExtraProjectInfo = None
+            OriginalLoadReferences = []
+            Stamp = None //Some 1L
+        }
+        //checker.GetProjectOptionsFromCommandLineArgs(fsprojFile, args)
 
     module FSharpAttribute =
         let isDomainAttribute (a : FSharpAttribute) =
@@ -1322,7 +1409,7 @@ module Preprocessing =
                             getKey <- sprintf "(fun (v : %s) -> v.%s :> obj)" t.TypeDefinition.FullName field
                         | None ->
                             let range = FSharpType.range t
-                            do! warn 4321 range "the domain type %s has no field marked with PrimaryKeyAttribute but is used inside a hset. peformance could suffer. please consider adding a primary key." (FSharpType.prettyName t)
+                            do! warn 1234 range "the domain type %s has no field marked with PrimaryKeyAttribute but is used inside a hset. peformance could suffer. please consider adding a primary key." (FSharpType.prettyName t)
                  
 
                     return {
@@ -1442,98 +1529,9 @@ module Preprocessing =
 
             let immutableName = FSharpEntity.immutableName e
             let defName = FSharpEntity.mutableNameDef e
-//            let targs = e.GenericParameters
-//            if targs.Count > 0 then
-//                let range = e.DeclarationLocation
-//                do! error 5432 range "cannot compile generic domain type %s" e.DisplayName
 
             if e.IsFSharpRecord then
                 do! PreprocessingNew.generateMutableType e
-//                let! annotatedFields =
-//                    e.FSharpFields
-//                        |> Seq.toList
-//                        |> List.chooseC (fun f ->
-//                            codegen {
-//                                if FSharpField.nonIncremental f then
-//                                    return None
-//                                else
-//                                    let! adapter = 
-//                                        if FSharpField.treatAsValue f then
-//                                            codegen { return valueAdapter }
-//                                        else
-//                                            generateAdapter f.FieldType
-//
-//                                    let inputName = sprintf "__initial.%s" f.DisplayName
-//                                    let init = sprintf "let _%s = %s" f.DisplayName (adapter.aInit inputName)
-//
-//                                    let access = adapter.aUpcast ("_" + f.DisplayName)
-//
-//                                    return Some (f.DisplayName, init, access)
-//                            }
-//                    )
-//                    
-//                match annotatedFields with
-//                    | [] -> 
-//                        ()
-//                    | _ ->
-//                        do! line "[<StructuredFormatDisplay(\"{AsString}\")>]"
-//                        do! line "[<System.Runtime.CompilerServices.Extension>]"
-//                        let typeDef = scope "type %s private(__initial : %s) =" defName immutableName
-//                        do! typeDef {
-//                            do! line "let mutable __current = __initial"
-//
-//                            for (_, init, _) in annotatedFields do
-//                                do! line "%s" init
-//                        
-//                            do! line ""
-//
-//                            for (fname, _, access) in annotatedFields do
-//                                do! line "member x.%s = %s" fname access
-//
-//                            for f in e.FSharpFields do
-//                                if FSharpField.nonIncremental f then
-//                                    do! line "member x.%s = __initial.%s" f.DisplayName f.DisplayName
-//                    
-//                            do! line ""
-//
-//                            
-//                            let apply = scope "member x.Update(__model : %s) =" immutableName
-//                            do! apply {
-//                                do! line "if not (Object.ReferenceEquals(__model, __current)) then"
-//                                do! push
-//
-//                                do! line "__current <- __model"
-//                
-//                                for f in e.FSharpFields do
-//                                    if not (FSharpField.nonIncremental f) then
-//                                        let fName = f.DisplayName
-//
-//                                        do! updateExpression f.FieldType ("_" + fName) ("__model." + fName)
-//                                do! pop
-//                            }
-//                            do! line ""
-//                            do! line "static member Update(__self : %s, __model : %s) = __self.Update(__model)" defName immutableName
-//                            do! line ""
-//                            do! line "static member Create(initial) = %s(initial)" defName
-//                            do! line ""
-//                            do! line "override x.ToString() = __current.ToString()"
-//                            do! line "member private x.AsString = sprintf \"%%A\" __current"
-//
-//                        }
-//
-//                        do! line ""
-//                        do! line ""
-//
-//
-//                        do! line "[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]"
-//                        let mModule = scope "module %s =" defName
-//                        do! mModule {
-//                            for (name,_,_) in annotatedFields do
-//                                do! line "let inline %s (m : %s) = m.%s" name defName name
-//                        }
-//
-//                        do! line ""
-//                        do! line ""
 
             elif e.IsFSharpUnion then   
                     
@@ -1823,14 +1821,251 @@ module Preprocessing =
                do! generateMutableModel file e
         }
 
-    let runWithOptions (options : FSharpProjectOptions) =
+    let runFileByFileWithOptions (log : ErrorInfo -> unit) (target : TargetType) (options : FSharpProjectOptions) =
         async {
+            let checker = FSharpChecker.Create(keepAssemblyContents = true, keepAllBackgroundResolutions = false)
+            checker.ImplicitlyStartBackgroundWork <- false
+
+            let sw = System.Diagnostics.Stopwatch()
+            let mutable worked = true
+            let files = System.Collections.Generic.List<string>()
+            let options = { options with SourceFiles = options.SourceFiles |> Array.collect (fun f -> [|f;Path.ChangeExtension(f, ".g.fs")|]) }
+
+            let options =
+                match target with
+                    | TargetType.Exe | TargetType.WinExe -> 
+                        if options.SourceFiles.Length > 0 then { options with SourceFiles = options.SourceFiles |> Array.take (options.SourceFiles.Length - 1) }
+                        else options
+                    | TargetType.Library ->
+                        options
+                        
+            for file in options.SourceFiles do
+                if worked && File.Exists file && not (file.EndsWith ".g.fs") then
+                    let outFile = System.IO.Path.ChangeExtension(file, ".g.fs")
+
+                    sw.Restart()
+                    let! (parse, check) = checker.ParseAndCheckFileInProject(file, 0, File.ReadAllText file, options)
+                    sw.Stop()
+
+
+                    log {
+                        severity    = Severity.Debug
+                        file        = file
+                        startLine   = -1
+                        endLine     = -1
+                        startColumn = -1
+                        endColumn   = -1
+                        message     = sprintf "parsing took: %.3fs" sw.Elapsed.TotalSeconds
+                        code        = 1234
+                    }
+
+                    files.Add file
+                    match check with
+                        | FSharpCheckFileAnswer.Succeeded answer ->
+                            let errors = answer.Errors |> Array.filter (fun e -> e.Severity = FSharpErrorSeverity.Error)
+                            let hasErrors = errors.Length > 0
+                            if hasErrors then
+                                log {
+                                    severity    = Severity.Warning
+                                    file        = file
+                                    startLine   = -1
+                                    endLine     = -1
+                                    startColumn = -1
+                                    endColumn   = -1
+                                    message     = sprintf "typecheck returned errors"
+                                    code        = 1234
+                                }
+
+                                answer.Errors 
+                                    |> Array.iter (ErrorInfo.ofFSharpErrorInfo >> ErrorInfo.withSeverity Severity.Info >> log)
+
+
+                            match answer.ImplementationFile with
+                                | Some impl ->
+                                    let domainTypes = impl.Declarations |> Seq.choose buildEntityTree |> Seq.toList
+                                    match domainTypes with
+                                        | [] -> ()
+                                        | domainTypes -> 
+                                            let file = impl.FileName
+                                            let c = generateMutableModels file domainTypes
+                                            let state, info = 
+                                                c.generate {
+                                                    scope = []
+                                                    result = System.Text.StringBuilder()
+                                                    indent = ""
+                                                    warnings = []
+                                                }
+
+                                            state.warnings |> List.iter log
+                                            match info with
+                                                | Success () ->
+                                                    let code = state.result.ToString()
+                                                    File.WriteAllText(outFile, code)
+
+                                                    
+                                                    log {
+                                                        severity    = Severity.Info
+                                                        file        = file
+                                                        startLine   = -1
+                                                        endLine     = -1
+                                                        startColumn = -1
+                                                        endColumn   = -1
+                                                        message     = sprintf "generated %A" outFile
+                                                        code        = 1234
+                                                    }
+
+
+                                                    files.Add outFile
+                        
+                                                | Error e ->
+                                                    if File.Exists outFile then File.Delete outFile
+                                                    log e
+                                                    worked <- false
+
+                                            ()
+                                    ()
+                                | None ->
+                                    log {
+                                        severity    = Severity.Warning
+                                        file        = file
+                                        startLine   = -1
+                                        endLine     = -1
+                                        startColumn = -1
+                                        endColumn   = -1
+                                        message     = "could not get implementation contents"
+                                        code        = 1234
+                                    }
+
+                            ()
+                        | FSharpCheckFileAnswer.Aborted ->
+                            log {
+                                severity    = Severity.Error
+                                file        = file
+                                startLine   = -1
+                                endLine     = -1
+                                startColumn = -1
+                                endColumn   = -1
+                                message     = "parsing failed with critical errors"
+                                code        = 1234
+                            }
+                            parse.Errors 
+                                |> Array.iter (ErrorInfo.ofFSharpErrorInfo >> ErrorInfo.withSeverity Severity.Info >> log)
+                            worked <- false
+
+                            ()
+                    
+            //checker.InvalidateAll()
+            checker.ClearLanguageServiceRootCachesAndCollectAndFinalizeAllTransients()
+            
+            if worked then
+                return Some (files.ToArray())
+            else
+                return None
+        }
+
+    let runFileByFileInternal (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (target : TargetType) (references : Set<string>) (files : list<string>) =
+        async {
+            let dir = Path.GetDirectoryName fsProjPath
+
+            let options = getProjectOptions isNetFramework fsProjPath target (Set.toList references) files
+            
+            //log {
+            //    severity    = Severity.Warning
+            //    file        = fsProjPath
+            //    startLine   = -1
+            //    endLine     = -1
+            //    startColumn = -1
+            //    endColumn   = -1
+            //    message     = sprintf "OutputType is: %A" target
+            //    code        = 1234
+            //}
+
+            return! runFileByFileWithOptions log target options
+        }
+
+    let runFileByFile (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string)  (target : TargetType) (references : Set<string>) (files : list<string>) =
+        let dir = Path.GetDirectoryName fsProjPath
+        let outDir = Path.Combine(dir, "..", "..", "bin", "Debug")
+      
+        let references = 
+            references |> Set.map (fun r ->
+                if Path.IsPathRooted r then 
+                    r
+                else 
+                    let rFile = Path.Combine(outDir, r)
+                    if File.Exists rFile then rFile
+                    else 
+                        let rFile = Path.Combine(dir, r)
+                        if File.Exists rFile then rFile
+                        else r
+            )
+            
+        let files = 
+            files |> List.map (fun r ->
+                if Path.IsPathRooted r then 
+                    r
+                else 
+                    Path.Combine(dir, r)
+            )
+
+        runFileByFileInternal isNetFramework log fsProjPath target references files
+
+
+    let runWithOptions (log : ErrorInfo -> unit) (options : FSharpProjectOptions) =
+        async {
+            let mutable options = options
+            
+            let checker = FSharpChecker.Create(keepAssemblyContents = true)
+
+            let originalFiles = options.SourceFiles
+            for file in originalFiles do
+                let! (parse, check) = checker.ParseAndCheckFileInProject(file, 0, File.ReadAllText file, options)
+                match check with
+                    | FSharpCheckFileAnswer.Succeeded answer ->
+                        match answer.ImplementationFile with
+                            | Some impl ->
+                                let domainTypes = impl.Declarations |> Seq.choose buildEntityTree |> Seq.toList
+                                match domainTypes with
+                                    | [] -> ()
+                                    | domainTypes -> 
+                                        let file = impl.FileName
+                                        let c = generateMutableModels file domainTypes
+                                        let state, info = 
+                                            c.generate {
+                                                scope = []
+                                                result = System.Text.StringBuilder()
+                                                indent = ""
+                                                warnings = []
+                                            }
+
+                                        match info with
+                                            | Success () ->
+                                                let code = state.result.ToString()
+                                                let outFile = System.IO.Path.ChangeExtension(file, ".g.fs")
+                                                File.WriteAllText(outFile, code)
+                                                options <- { options with Stamp = options.Stamp |> Option.map (fun a -> 1L + a); SourceFiles = options.SourceFiles |> Array.collect (fun f -> if f = file then [|f; outFile|] else [|f|]) }
+                                            | Error e ->
+                                                failwithf "%A" (state.warnings, e)
+
+                                        ()
+                                ()
+                            | None ->
+                                ()
+                        ()
+                    | _ ->
+                        ()
+                ()
+
+
             let! res = checker.ParseAndCheckProject(options)
             
             if res.HasCriticalErrors then
                 return CompilerError (Array.toList res.Errors)
-
             else
+                for e in res.Errors do
+                    let info = ErrorInfo.ofFSharpErrorInfo e
+                    log { info with severity = Severity.Info }
+
                 let entityTrees = 
                     res.AssemblyContents.ImplementationFiles |> List.choose (fun f ->
                         let domainTypes = f.Declarations |> Seq.choose buildEntityTree |> Seq.toList
@@ -1859,16 +2094,17 @@ module Preprocessing =
                 return Worked code
         }
 
-    let runInternal (fsProjPath : string) (references : Set<string>) (files : list<string>) =
+    let runInternal (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (target : TargetType) (references : Set<string>) (files : list<string>) =
         async {
             let dir = Path.GetDirectoryName fsProjPath
-            let outDir = Path.Combine(dir, "..", "..", "bin", "Debug")
 
-            let options = getProjectOptions fsProjPath (Set.toList references) files
-            return! runWithOptions options
+            let options = getProjectOptions isNetFramework fsProjPath target (Set.toList references) files
+            
+
+            return! runWithOptions log options
         }
 
-    let run (fsProjPath : string) (references : Set<string>) (files : list<string>) =
+    let run (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (target : TargetType) (references : Set<string>) (files : list<string>) =
         let dir = Path.GetDirectoryName fsProjPath
         let outDir = Path.Combine(dir, "..", "..", "bin", "Debug")
       
@@ -1893,4 +2129,4 @@ module Preprocessing =
                     Path.Combine(dir, r)
             )
 
-        runInternal fsProjPath references files
+        runInternal isNetFramework log fsProjPath target references files

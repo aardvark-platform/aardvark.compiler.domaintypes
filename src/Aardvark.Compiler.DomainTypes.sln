@@ -3,13 +3,15 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.26430.4
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Aardvark.Compiler.DomainTypes.MSBuild", "Aardvark.Compiler.DomainTypes.MSBuild\Aardvark.Compiler.DomainTypes.MSBuild.fsproj", "{378DF51A-1C31-4AF4-ACED-9CFB5C1252E9}"
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Aardvark.Compiler.DomainTypes.MSBuild", "Aardvark.Compiler.DomainTypes.MSBuild\Aardvark.Compiler.DomainTypes.MSBuild.fsproj", "{378DF51A-1C31-4AF4-ACED-9CFB5C1252E9}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Aardvark.Compiler.DomainTypeTool", "Aardvark.Compiler.DomainTypeTool\Aardvark.Compiler.DomainTypeTool.fsproj", "{D8A9B8C7-1416-4EF8-B46D-96B37C64A134}"
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Aardvark.Compiler.DomainTypes.Build", "Aardvark.Compiler.DomainTypes.Build\Aardvark.Compiler.DomainTypes.Build.fsproj", "{0CD18EC9-3614-46C3-9B5D-7AA5BAB32171}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Aardvark.Compiler.DomainTypes", "Aardvark.Compiler.DomainTypes\Aardvark.Compiler.DomainTypes.fsproj", "{5E1B8A75-6C05-41E6-84F1-A0D6B4CD2B32}"
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Aardvark.Compiler.DomainTypes", "Aardvark.Compiler.DomainTypes\Aardvark.Compiler.DomainTypes.fsproj", "{00C9377F-6380-4D39-89D3-621175B77C37}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Aardvark.Compiler.DomainTypes.Build", "Aardvark.Compiler.DomainTypes.Build\Aardvark.Compiler.DomainTypes.Build.fsproj", "{0CD18EC9-3614-46C3-9B5D-7AA5BAB32171}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Aardvark.Compiler.DomainTypes.MSBuild.VS", "Aardvark.Compiler.DomainTypes.MSBuild.VS\Aardvark.Compiler.DomainTypes.MSBuild.VS.fsproj", "{2AF4A80E-4F40-487F-B4FA-DF4A1B82CD7F}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "DomainTypeGenerator", "DomainTypeGenerator\DomainTypeGenerator.fsproj", "{EA3B94CA-D747-4571-BE5A-037A23B96314}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,20 +23,27 @@ Global
 		{378DF51A-1C31-4AF4-ACED-9CFB5C1252E9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{378DF51A-1C31-4AF4-ACED-9CFB5C1252E9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{378DF51A-1C31-4AF4-ACED-9CFB5C1252E9}.Release|Any CPU.Build.0 = Release|Any CPU
-		{D8A9B8C7-1416-4EF8-B46D-96B37C64A134}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D8A9B8C7-1416-4EF8-B46D-96B37C64A134}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D8A9B8C7-1416-4EF8-B46D-96B37C64A134}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D8A9B8C7-1416-4EF8-B46D-96B37C64A134}.Release|Any CPU.Build.0 = Release|Any CPU
-		{5E1B8A75-6C05-41E6-84F1-A0D6B4CD2B32}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{5E1B8A75-6C05-41E6-84F1-A0D6B4CD2B32}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{5E1B8A75-6C05-41E6-84F1-A0D6B4CD2B32}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{5E1B8A75-6C05-41E6-84F1-A0D6B4CD2B32}.Release|Any CPU.Build.0 = Release|Any CPU
 		{0CD18EC9-3614-46C3-9B5D-7AA5BAB32171}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{0CD18EC9-3614-46C3-9B5D-7AA5BAB32171}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0CD18EC9-3614-46C3-9B5D-7AA5BAB32171}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0CD18EC9-3614-46C3-9B5D-7AA5BAB32171}.Release|Any CPU.Build.0 = Release|Any CPU
+		{00C9377F-6380-4D39-89D3-621175B77C37}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{00C9377F-6380-4D39-89D3-621175B77C37}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{00C9377F-6380-4D39-89D3-621175B77C37}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{00C9377F-6380-4D39-89D3-621175B77C37}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2AF4A80E-4F40-487F-B4FA-DF4A1B82CD7F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2AF4A80E-4F40-487F-B4FA-DF4A1B82CD7F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2AF4A80E-4F40-487F-B4FA-DF4A1B82CD7F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2AF4A80E-4F40-487F-B4FA-DF4A1B82CD7F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EA3B94CA-D747-4571-BE5A-037A23B96314}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EA3B94CA-D747-4571-BE5A-037A23B96314}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EA3B94CA-D747-4571-BE5A-037A23B96314}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EA3B94CA-D747-4571-BE5A-037A23B96314}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B895ABD7-D08B-4DD8-A02A-7DAE1DE0E675}
 	EndGlobalSection
 EndGlobal

@@ -4,9 +4,18 @@ open System
 open System.Text
 open Microsoft.FSharp.Compiler
 open Microsoft.FSharp.Compiler.Range
+open Microsoft.FSharp.Compiler.SourceCodeServices
+
+type Severity =
+    | Debug
+    | Info
+    | Warning
+    | Error
+
 
 type ErrorInfo =
     {
+        severity    : Severity
         file        : string
         startLine   : int
         endLine     : int
@@ -15,6 +24,36 @@ type ErrorInfo =
         message     : string
         code        : int
     }
+
+module Severity =
+    let ofFSharpSeverity (s : FSharpErrorSeverity) =
+        match s with
+            | FSharpErrorSeverity.Warning -> Severity.Warning
+            | FSharpErrorSeverity.Error -> Severity.Error
+
+module ErrorInfo =
+    let ofFSharpErrorInfo (err : FSharpErrorInfo) =
+        {
+            severity = Severity.ofFSharpSeverity err.Severity
+            file = err.FileName
+            startLine = err.StartLineAlternate
+            endLine = err.EndLineAlternate
+            startColumn = err.StartColumn
+            endColumn = err.EndColumn
+            message = err.Message
+            code = err.ErrorNumber
+        }
+
+    let withSeverity (v : Severity) (err : ErrorInfo) = 
+        let prefix =
+            match err.severity with
+                | Severity.Warning -> "WARNING: "
+                | Severity.Error -> "ERROR: "
+                | _ -> ""
+        { err with 
+            severity = v 
+            message = prefix + err.message
+        }
 
 type Result<'a> = 
     | Success of 'a
@@ -124,6 +163,7 @@ module CodeGen =
         Printf.kprintf (fun str ->
             { generate = fun s ->
                 s, Error {
+                    severity    = Severity.Error
                     file        = range.FileName
                     startLine   = range.StartLine
                     endLine     = range.EndLine
@@ -140,6 +180,7 @@ module CodeGen =
             { generate = fun s ->
                 let info = 
                     {
+                        severity    = Severity.Warning
                         file        = range.FileName
                         startLine   = range.StartLine
                         endLine     = range.EndLine
