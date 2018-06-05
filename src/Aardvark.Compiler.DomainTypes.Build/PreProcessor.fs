@@ -1036,6 +1036,7 @@ module Preprocessing =
 
 
         {
+            ProjectId = None
             ProjectFileName = fsprojFile
             SourceFiles = List.toArray files
             OtherOptions =
