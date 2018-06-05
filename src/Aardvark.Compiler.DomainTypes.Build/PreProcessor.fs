@@ -1012,6 +1012,7 @@ type TargetType =
     | Library
 
 module Preprocessing =
+    open System.Security.Cryptography
 
 
     let domainAttName = "Aardvark.Base.Incremental.DomainTypeAttribute"
@@ -1821,7 +1822,37 @@ module Preprocessing =
                do! generateMutableModel file e
         }
 
-    let runFileByFileWithOptions (log : ErrorInfo -> unit) (target : TargetType) (options : FSharpProjectOptions) =
+    let singleLineComment = System.Text.RegularExpressions.Regex @"^[ \t]*//[ \t]*([^ \t]*)[ \t]*$"
+
+    let md5 = MD5.Create()
+
+    let (|SingleLineComment|_|) str =
+        let m = singleLineComment.Match str
+        if m.Success then
+            Some (m.Groups.[1].Value)
+        else
+            None
+            
+    let (|Bool|_|) (str : string) =
+        match str.ToLower().Trim() with
+            | "true" -> Some true
+            | "false" -> Some false
+            | _ -> None
+
+    let (|Date|_|) str =
+        match System.Int64.TryParse str with
+            | (true, t) -> Some (DateTime.FromBinary(t))
+            | _ -> None
+
+    type FileCacheEntry =
+        {
+            file            : string
+            hasDomainTypes  : bool
+            date            : DateTime
+            hash            : string
+        }
+
+    let runFileByFileWithOptions (log : ErrorInfo -> unit) (target : TargetType) (options : FSharpProjectOptions) (dir : string) (fileIncludes : list<string>) =
         async {
             let checker = FSharpChecker.Create(keepAssemblyContents = true, keepAllBackgroundResolutions = false)
             checker.ImplicitlyStartBackgroundWork <- false
@@ -1830,6 +1861,7 @@ module Preprocessing =
             let mutable worked = true
             let files = System.Collections.Generic.List<string>()
             let options = { options with SourceFiles = options.SourceFiles |> Array.collect (fun f -> [|f;Path.ChangeExtension(f, ".g.fs")|]) }
+            let fileIncludes = fileIncludes |> List.collect (fun f -> [f;Path.ChangeExtension(f, ".g.fs")])
 
             let options =
                 match target with
@@ -1838,93 +1870,140 @@ module Preprocessing =
                         else options
                     | TargetType.Library ->
                         options
+
+            let computeHash (f : TextWriter -> unit) =
+                use ms = new MemoryStream()
+                use w = new StreamWriter(ms)
+                f w
+                w.Flush()
+                ms.ToArray() |> md5.ComputeHash |> Seq.map (sprintf "%02X") |> String.concat ""
+                
+            let projectHash = 
+                computeHash (fun w ->
+                    w.WriteLine "files"
+                    for s in fileIncludes do
+                        w.WriteLine s
+                )
+
+            let cacheFiles = System.Collections.Generic.List<string>()
+            let entries = System.Collections.Generic.Dictionary<string, FileCacheEntry>()
+            let cachePath = Path.Combine(dir, ".domaincache")
+            let mutable cacheHash = ""
+            let mutable modified = false
+            if File.Exists cachePath then
+                use stream = File.OpenRead cachePath
+                use reader = new StreamReader(stream)
+                try
+                    cacheHash <- reader.ReadLine()
+                    while not reader.EndOfStream do
+                        let line = reader.ReadLine()
                         
-            for file in options.SourceFiles do
-                if worked && File.Exists file && not (file.EndsWith ".g.fs") then
+                        if not (String.IsNullOrWhiteSpace line) then
+                            match line.Split [| '|' |] with
+                                | [| filename; Bool hasDomainTypes; Date date; hash |] ->
+                                    cacheFiles.Add filename
+                                    entries.[filename] <- { file = filename; hasDomainTypes = hasDomainTypes; date = date; hash = hash }
+                            
+                                | _ ->
+                                    log {
+                                        severity    = Severity.Warning
+                                        file        = ".domaincache"
+                                        startLine   = -1
+                                        endLine     = -1
+                                        startColumn = -1
+                                        endColumn   = -1
+                                        message     = "Could not parse .domaincache"
+                                        code        = 1234
+                                    }
+                                    cacheFiles.Clear()
+                                    entries.Clear()
+                                    cacheHash <- ""
+                                    stream.Position <- stream.Length
+                    with _ ->
+                        log {
+                            severity    = Severity.Warning
+                            file        = ".domaincache"
+                            startLine   = -1
+                            endLine     = -1
+                            startColumn = -1
+                            endColumn   = -1
+                            message     = "Could not parse .domaincache"
+                            code        = 1234
+                        }
+                        cacheFiles.Clear()
+                        entries.Clear()
+                        cacheHash <- ""
+                    
+
+            if projectHash <> cacheHash then
+                log {
+                    severity    = Severity.Debug
+                    file        = ".domaincache"
+                    startLine   = -1
+                    endLine     = -1
+                    startColumn = -1
+                    endColumn   = -1
+                    message     = "invalid cache since project changed"
+                    code        = 1234
+                }
+                
+                cacheFiles.Clear()
+                entries.Clear()
+                
+
+            let newEntries = System.Collections.Generic.List<FileCacheEntry>()
+                        
+            for inc, file in List.zip fileIncludes (List.ofArray options.SourceFiles) do
+                let info = FileInfo file
+
+                if worked && info.Exists && not (file.EndsWith ".g.fs") then
+                    let updateIn = info.LastWriteTimeUtc
                     let outFile = System.IO.Path.ChangeExtension(file, ".g.fs")
+   
+                    let entry =
+                        match entries.TryGetValue inc with
+                            | (true, e) -> 
+                                if e.hasDomainTypes && not (File.Exists outFile) then
+                                    { file = inc; hasDomainTypes = true; date = DateTime.MinValue; hash = "" }
+                                else
+                                    e
 
-                    sw.Restart()
-                    let! (parse, check) = checker.ParseAndCheckFileInProject(file, 0, File.ReadAllText file, options)
-                    sw.Stop()
+                            | __ -> 
+                                { file = inc; hasDomainTypes = true; date = DateTime.MinValue; hash = "" }
+                    
 
-
-                    log {
-                        severity    = Severity.Debug
-                        file        = file
-                        startLine   = -1
-                        endLine     = -1
-                        startColumn = -1
-                        endColumn   = -1
-                        message     = sprintf "parsing took: %.3fs" sw.Elapsed.TotalSeconds
-                        code        = 1234
-                    }
+                    let hash = 
+                        lazy ( 
+                            use stream = File.OpenRead file
+                            md5.ComputeHash stream |> System.Convert.ToBase64String
+                        )
 
                     files.Add file
-                    match check with
-                        | FSharpCheckFileAnswer.Succeeded answer ->
-                            let errors = answer.Errors |> Array.filter (fun e -> e.Severity = FSharpErrorSeverity.Error)
-                            let hasErrors = errors.Length > 0
-                            if hasErrors then
-                                log {
-                                    severity    = Severity.Warning
-                                    file        = file
-                                    startLine   = -1
-                                    endLine     = -1
-                                    startColumn = -1
-                                    endColumn   = -1
-                                    message     = sprintf "typecheck returned errors"
-                                    code        = 1234
-                                }
+                    
+                    if (modified && entry.hasDomainTypes) || (updateIn <> entry.date && hash.Value <> entry.hash) then
+                        let hash = hash.Value
+                        modified <- true
 
-                                answer.Errors 
-                                    |> Array.iter (ErrorInfo.ofFSharpErrorInfo >> ErrorInfo.withSeverity Severity.Info >> log)
-
-
-                            match answer.ImplementationFile with
-                                | Some impl ->
-                                    let domainTypes = impl.Declarations |> Seq.choose buildEntityTree |> Seq.toList
-                                    match domainTypes with
-                                        | [] -> ()
-                                        | domainTypes -> 
-                                            let file = impl.FileName
-                                            let c = generateMutableModels file domainTypes
-                                            let state, info = 
-                                                c.generate {
-                                                    scope = []
-                                                    result = System.Text.StringBuilder()
-                                                    indent = ""
-                                                    warnings = []
-                                                }
-
-                                            state.warnings |> List.iter log
-                                            match info with
-                                                | Success () ->
-                                                    let code = state.result.ToString()
-                                                    File.WriteAllText(outFile, code)
-
-                                                    
-                                                    log {
-                                                        severity    = Severity.Info
-                                                        file        = file
-                                                        startLine   = -1
-                                                        endLine     = -1
-                                                        startColumn = -1
-                                                        endColumn   = -1
-                                                        message     = sprintf "generated %A" outFile
-                                                        code        = 1234
-                                                    }
-
-
-                                                    files.Add outFile
+                        sw.Restart()
+                        let! (parse, check) = checker.ParseAndCheckFileInProject(file, 0, File.ReadAllText file, options)
+                        sw.Stop()
                         
-                                                | Error e ->
-                                                    if File.Exists outFile then File.Delete outFile
-                                                    log e
-                                                    worked <- false
-
-                                            ()
-                                    ()
-                                | None ->
+                        log {
+                            severity    = Severity.Debug
+                            file        = file
+                            startLine   = -1
+                            endLine     = -1
+                            startColumn = -1
+                            endColumn   = -1
+                            message     = sprintf "parsing took: %.3fs" sw.Elapsed.TotalSeconds
+                            code        = 1234
+                        }
+                        
+                        match check with
+                            | FSharpCheckFileAnswer.Succeeded answer ->
+                                let errors = answer.Errors |> Array.filter (fun e -> e.Severity = FSharpErrorSeverity.Error)
+                                let hasErrors = errors.Length > 0
+                                if hasErrors then
                                     log {
                                         severity    = Severity.Warning
                                         file        = file
@@ -1932,38 +2011,142 @@ module Preprocessing =
                                         endLine     = -1
                                         startColumn = -1
                                         endColumn   = -1
-                                        message     = "could not get implementation contents"
+                                        message     = sprintf "typecheck returned errors"
                                         code        = 1234
                                     }
 
-                            ()
-                        | FSharpCheckFileAnswer.Aborted ->
-                            log {
-                                severity    = Severity.Error
-                                file        = file
-                                startLine   = -1
-                                endLine     = -1
-                                startColumn = -1
-                                endColumn   = -1
-                                message     = "parsing failed with critical errors"
-                                code        = 1234
-                            }
-                            parse.Errors 
-                                |> Array.iter (ErrorInfo.ofFSharpErrorInfo >> ErrorInfo.withSeverity Severity.Info >> log)
-                            worked <- false
+                                    answer.Errors 
+                                        |> Array.iter (ErrorInfo.ofFSharpErrorInfo >> ErrorInfo.withSeverity Severity.Info >> log)
 
-                            ()
-                    
+
+                                match answer.ImplementationFile with
+                                    | Some impl ->
+                                        let domainTypes = impl.Declarations |> Seq.choose buildEntityTree |> Seq.toList
+                                        match domainTypes with
+                                            | [] -> 
+                                                if File.Exists outFile then File.Delete outFile
+
+                                                newEntries.Add {
+                                                    file = inc
+                                                    hasDomainTypes = false
+                                                    date = updateIn
+                                                    hash = hash
+                                                }
+
+                                            | domainTypes -> 
+                                                let file = impl.FileName
+                                                let c = generateMutableModels file domainTypes
+                                                let state, info = 
+                                                    c.generate {
+                                                        scope = []
+                                                        result = System.Text.StringBuilder()
+                                                        indent = ""
+                                                        warnings = []
+                                                    }
+
+                                                state.warnings |> List.iter log
+                                                match info with
+                                                    | Success () ->
+                                                        let code = state.result.ToString()
+                                                        
+                                                        newEntries.Add {
+                                                            file = inc
+                                                            hasDomainTypes = true
+                                                            date = updateIn
+                                                            hash = hash
+                                                        }
+
+                                                        File.WriteAllText(outFile, code)
+
+                                                    
+                                                        log {
+                                                            severity    = Severity.Info
+                                                            file        = file
+                                                            startLine   = -1
+                                                            endLine     = -1
+                                                            startColumn = -1
+                                                            endColumn   = -1
+                                                            message     = sprintf "generated %A" outFile
+                                                            code        = 1234
+                                                        }
+
+
+                                                        files.Add outFile
+                        
+                                                    | Error e ->
+                                                        if File.Exists outFile then File.Delete outFile
+                                                        log e
+                                                        worked <- false
+
+                                                ()
+                                        ()
+                                    | None ->
+                                        log {
+                                            severity    = Severity.Warning
+                                            file        = file
+                                            startLine   = -1
+                                            endLine     = -1
+                                            startColumn = -1
+                                            endColumn   = -1
+                                            message     = "could not get implementation contents"
+                                            code        = 1234
+                                        }
+
+                                ()
+                            | FSharpCheckFileAnswer.Aborted ->
+                                log {
+                                    severity    = Severity.Error
+                                    file        = file
+                                    startLine   = -1
+                                    endLine     = -1
+                                    startColumn = -1
+                                    endColumn   = -1
+                                    message     = "parsing failed with critical errors"
+                                    code        = 1234
+                                }
+                                parse.Errors 
+                                    |> Array.iter (ErrorInfo.ofFSharpErrorInfo >> ErrorInfo.withSeverity Severity.Info >> log)
+                                worked <- false
+
+                                ()
+                    else
+                        if entry.hasDomainTypes then
+                            files.Add outFile
+                        else
+                            if File.Exists outFile then File.Delete outFile
+
+                        newEntries.Add entry
+
+                        log {
+                            severity    = Severity.Debug
+                            file        = file
+                            startLine   = -1
+                            endLine     = -1
+                            startColumn = -1
+                            endColumn   = -1
+                            message     = sprintf "cache hit for %s" inc
+                            code        = 1234
+                        }
             //checker.InvalidateAll()
             checker.ClearLanguageServiceRootCachesAndCollectAndFinalizeAllTransients()
             
             if worked then
+
+                let cacheContent =
+                    String.concat "\r\n" [
+                        yield projectHash
+                        for n in newEntries do
+                            let has = if n.hasDomainTypes then "true" else "false"
+                            yield sprintf "%s|%s|%d|%s" n.file has (n.date.ToBinary()) n.hash
+                    ]
+                File.WriteAllText(cachePath, cacheContent)
+
                 return Some (files.ToArray())
             else
                 return None
         }
 
-    let runFileByFileInternal (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (target : TargetType) (references : Set<string>) (files : list<string>) =
+    let runFileByFileInternal (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string) (target : TargetType) (references : Set<string>) (files : list<string>) (fileIncludes : list<string>) =
         async {
             let dir = Path.GetDirectoryName fsProjPath
 
@@ -1980,7 +2163,7 @@ module Preprocessing =
             //    code        = 1234
             //}
 
-            return! runFileByFileWithOptions log target options
+            return! runFileByFileWithOptions log target options dir fileIncludes
         }
 
     let runFileByFile (isNetFramework : bool) (log : ErrorInfo -> unit) (fsProjPath : string)  (target : TargetType) (references : Set<string>) (files : list<string>) =
@@ -1999,7 +2182,10 @@ module Preprocessing =
                         if File.Exists rFile then rFile
                         else r
             )
-            
+                
+        let fileIncludes = 
+            files
+
         let files = 
             files |> List.map (fun r ->
                 if Path.IsPathRooted r then 
@@ -2008,7 +2194,7 @@ module Preprocessing =
                     Path.Combine(dir, r)
             )
 
-        runFileByFileInternal isNetFramework log fsProjPath target references files
+        runFileByFileInternal isNetFramework log fsProjPath target references files fileIncludes
 
 
     let runWithOptions (log : ErrorInfo -> unit) (options : FSharpProjectOptions) =
