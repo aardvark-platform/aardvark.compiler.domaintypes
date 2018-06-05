@@ -1871,6 +1871,9 @@ module Preprocessing =
                         else options
                     | TargetType.Library ->
                         options
+            
+            let fileIncludes = 
+                List.take options.SourceFiles.Length fileIncludes
 
             let computeHash (f : TextWriter -> unit) =
                 use ms = new MemoryStream()
