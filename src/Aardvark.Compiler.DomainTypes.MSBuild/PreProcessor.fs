@@ -127,6 +127,7 @@ type Preprocess() =
                     message     = sprintf "Skipping project %A due to file extension (skipping non fsprojs)." projectFile
                     code        = 1234
                 }
+                results <- files
                 true
                 
 
