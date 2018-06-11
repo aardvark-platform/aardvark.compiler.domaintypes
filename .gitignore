@@ -9,3 +9,5 @@ obj
 /.paket/Paket.Restore.targets
 *.dtbcache
 .vs
+/src/Example/*.domaincache
+/src/ExampleDotnetCore/*.domaincache
