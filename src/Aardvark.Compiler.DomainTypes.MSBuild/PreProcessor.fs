@@ -96,80 +96,39 @@ type Preprocess() =
         if debug then
             System.Diagnostics.Debugger.Launch() |> ignore
             
-        let targetType = 
-            match outputType.ToLower() with
-                | "winexe" -> TargetType.WinExe
-                | "exe" -> TargetType.Exe
-                | _ -> TargetType.Library
+        match Path.GetExtension projectFile with
+            | ".fsproj" -> 
+                let targetType = 
+                    match outputType.ToLower() with
+                        | "winexe" -> TargetType.WinExe
+                        | "exe" -> TargetType.Exe
+                        | _ -> TargetType.Library
 
-        let isNetFramework = references |> Array.exists (fun r -> Path.GetFileNameWithoutExtension(r).ToLower() = "mscorlib")
-        let refs = Set.ofArray references
+                let isNetFramework = references |> Array.exists (fun r -> Path.GetFileNameWithoutExtension(r).ToLower() = "mscorlib")
+                let refs = Set.ofArray references
         
 
-        let prep = Preprocessing.runFileByFile isNetFramework x.Log.Log projectFile targetType refs (Array.toList files) |> Async.RunSynchronously
-        results <- files
-        match prep with
-            | Some files -> 
+                let prep = Preprocessing.runFileByFile isNetFramework x.Log.Log projectFile targetType refs (Array.toList files) |> Async.RunSynchronously
                 results <- files
+                match prep with
+                    | Some files -> 
+                        results <- files
+                        true
+                    | None ->
+                        false
+             | other -> 
+                x.Log.Log {
+                    severity    = Severity.Info
+                    file        = projectFile
+                    startLine   = -1
+                    endLine     = -1
+                    startColumn = -1
+                    endColumn   = -1
+                    message     = sprintf "Skipping project %A due to file extension (skipping non fsprojs)." projectFile
+                    code        = 1234
+                }
                 true
-            | None ->
-                false
-
-        //let projectDir = Path.GetDirectoryName projectFile
-
-        //match prep with
-        //    | Worked res ->
-        //        let mutable goodFiles = Set.empty
-        //        for (f,content) in Map.toSeq res do
-        //            match content with
-        //                | Finished(warnings, content) ->
-        //                    for w in warnings do 
-        //                        x.Log.LogWarning(w)
-
-        //                    goodFiles <- Set.add f goodFiles
-
-        //                    let path = System.IO.Path.ChangeExtension(f, ".g.fs")
-        //                    x.Log.LogMessage(sprintf "generated DomainFile %s" (Path.GetFileName path))
-
-        //                    let old = 
-        //                        if File.Exists path then File.ReadAllText path
-        //                        else ""
-
-        //                    if old <> content then
-        //                        File.WriteAllText(path, content)
-        //                | Faulted(warnings, error) ->
-        //                    for w in warnings do x.Log.LogWarning(w)
-        //                    x.Log.LogError(error)
-
-        //        let files = 
-        //            files |> Array.map (fun f ->
-        //                Path.Combine(projectDir, f) |> Path.GetFullPath
-        //            )
-
-        //        let fscFiles =
-        //            files |> Array.collect (fun f ->
-        //                let gf = System.IO.Path.ChangeExtension(f, ".g.fs")
-
-        //                if files |> Array.exists (fun f -> f = gf) then
-        //                    [| f |]
-        //                else
-        //                    if Set.contains f goodFiles then
-        //                        [| f; gf |]
-        //                    else
-        //                        [| f |]
-        //            )
-
-        //        results <- fscFiles
-
-        //        true
-
-        //    | CompilerError errors ->
-        //        x.Log.LogError("F# compiler returned errors")
-
-        //        for e in errors do
-        //            x.Log.LogError(e)
-
-        //        false
+                
 
 
     member x.Debug
