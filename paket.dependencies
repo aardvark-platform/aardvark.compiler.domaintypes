@@ -2,6 +2,8 @@ framework: net45, net46, net47, netstandard2.0, net471, netcoreapp2.0
 source https://api.nuget.org/v3/index.json
 source https://vrvis.myget.org/F/aardvark_public/api/v3/index.json
 
+copy_local: true
+
 nuget FSharp.Core ~> 4.3.0
 
 nuget Aardvark.Base                           ~> 4.0.0

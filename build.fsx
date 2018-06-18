@@ -28,8 +28,8 @@ Target "MergeDotNet" (fun () ->
             
             "Aardvark.Compiler.DomainTypes.MSBuild.dll"
             "Aardvark.Compiler.DomainTypes.Build.dll"
-            "FSharp.Compiler.Service.dll"
-            "FSharp.Core.dll"
+            "../../../packages/FSharp.Compiler.Service/lib/netstandard2.0/FSharp.Compiler.Service.dll"
+            "../../../packages/FSharp.Core/lib/netstandard1.6/FSharp.Core.dll"
         |]
 
     let worked = 
