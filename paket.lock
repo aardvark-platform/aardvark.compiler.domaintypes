@@ -826,7 +826,6 @@ NUGET
       System.Xml.ReaderWriter (>= 4.3) - restriction: || (&& (== net45) (>= netstandard1.3)) (&& (== net47) (< net46)) (&& (== net471) (< net46)) (== netcoreapp2.0) (== netstandard2.0)
       System.Xml.XmlDocument (>= 4.3) - restriction: || (&& (== net45) (>= net46)) (&& (== net45) (>= netstandard1.3)) (== net46) (== net47) (== net471) (== netcoreapp2.0) (== netstandard2.0)
       System.Xml.XPath (>= 4.3) - restriction: || (&& (== net45) (>= net46)) (&& (== net45) (>= netstandard1.3)) (== net46) (== net47) (== net471) (== netcoreapp2.0) (== netstandard2.0)
-  remote: https://vrvis.myget.org/F/aardvark_public/api/v3/index.json
     DevILSharp (0.2.4)
       FSharp.Core (>= 4.3 < 4.4)
 
@@ -842,7 +841,7 @@ NUGET
     SourceLink.Fake (1.1)
 GITHUB
   remote: vrvis/Aardvark.Fake
-    FULLPROJECT (bfae10520868567c41bfa9196a7ac7ef79bb50f6)
+    FULLPROJECT (7bebbfdb07cbf4ec6426be3f813dc367a0614e6a)
       FAKE (>= 4.63 < 4.64)
       Mono.Cecil (>= 0.10.0-beta6 < 0.11)
       SourceLink.Fake (>= 1.1 < 1.2)
