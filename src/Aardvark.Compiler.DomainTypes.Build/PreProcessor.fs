@@ -1851,6 +1851,7 @@ module Preprocessing =
             hasDomainTypes  : bool
             date            : DateTime
             hash            : string
+            hadErrors       : bool
         }
 
     let runFileByFileWithOptions (log : ErrorInfo -> unit) (target : TargetType) (options : FSharpProjectOptions) (dir : string) (fileIncludes : list<string>) =
@@ -1904,9 +1905,9 @@ module Preprocessing =
                         
                         if not (String.IsNullOrWhiteSpace line) then
                             match line.Split [| '|' |] with
-                                | [| filename; Bool hasDomainTypes; Date date; hash |] ->
+                                | [| filename; Bool hasDomainTypes; Date date; hash; Bool hadErrors |] ->
                                     cacheFiles.Add filename
-                                    entries.[filename] <- { file = filename; hasDomainTypes = hasDomainTypes; date = date; hash = hash }
+                                    entries.[filename] <- { file = filename; hasDomainTypes = hasDomainTypes; date = date; hash = hash; hadErrors = hadErrors }
                             
                                 | _ ->
                                     log {
@@ -1968,12 +1969,12 @@ module Preprocessing =
                         match entries.TryGetValue inc with
                             | (true, e) -> 
                                 if e.hasDomainTypes && not (File.Exists outFile) then
-                                    { file = inc; hasDomainTypes = true; date = DateTime.MinValue; hash = "" }
+                                    { file = inc; hasDomainTypes = true; date = DateTime.MinValue; hash = ""; hadErrors = true }
                                 else
                                     e
 
                             | __ -> 
-                                { file = inc; hasDomainTypes = true; date = DateTime.MinValue; hash = "" }
+                                { file = inc; hasDomainTypes = true; date = DateTime.MinValue; hash = ""; hadErrors = true }
                     
 
                     let hash = 
@@ -1984,7 +1985,7 @@ module Preprocessing =
 
                     files.Add file
                     
-                    if (modified && entry.hasDomainTypes) || (updateIn <> entry.date && hash.Value <> entry.hash) then
+                    if (modified && entry.hasDomainTypes) || (updateIn <> entry.date && hash.Value <> entry.hash) || entry.hadErrors then
                         let hash = hash.Value
                         modified <- true
 
@@ -2018,7 +2019,7 @@ module Preprocessing =
                                         message     = sprintf "typecheck returned errors"
                                         code        = 1234
                                     }
-
+                                    
                                     answer.Errors 
                                         |> Array.iter (ErrorInfo.ofFSharpErrorInfo >> ErrorInfo.withSeverity Severity.Info >> log)
 
@@ -2035,6 +2036,7 @@ module Preprocessing =
                                                     hasDomainTypes = false
                                                     date = updateIn
                                                     hash = hash
+                                                    hadErrors = hasErrors
                                                 }
 
                                             | domainTypes -> 
@@ -2058,6 +2060,7 @@ module Preprocessing =
                                                             hasDomainTypes = true
                                                             date = updateIn
                                                             hash = hash
+                                                            hadErrors = hasErrors
                                                         }
 
                                                         File.WriteAllText(outFile, code)
@@ -2141,7 +2144,8 @@ module Preprocessing =
                         yield projectHash
                         for n in newEntries do
                             let has = if n.hasDomainTypes then "true" else "false"
-                            yield sprintf "%s|%s|%d|%s" n.file has (n.date.ToBinary()) n.hash
+                            let err = if n.hadErrors then "true" else "false"
+                            yield sprintf "%s|%s|%d|%s|%s" n.file has (n.date.ToBinary()) n.hash err
                     ]
                 File.WriteAllText(cachePath, cacheContent)
 

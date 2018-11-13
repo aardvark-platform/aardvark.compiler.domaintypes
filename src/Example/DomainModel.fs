@@ -24,6 +24,7 @@ type Object =
         trafo       : Trafo3d
         model       : Model
         blubber     : plist<MyUnion>
+        blabbl      : ExampleLib.MyDomainType
     }
 
 [<DomainType>]

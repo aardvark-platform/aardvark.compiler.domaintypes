@@ -84,6 +84,11 @@
     <None Include="paket.references" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\ExampleLib\ExampleLib.fsproj">
+      <Name>ExampleLib</Name>
+      <Project>{b6842886-f56b-472e-9db4-828c5a7f8188}</Project>
+      <Private>True</Private>
+    </ProjectReference>
     <Reference Include="netstandard" />
     <Reference Include="mscorlib" />
     <Reference Include="System" />

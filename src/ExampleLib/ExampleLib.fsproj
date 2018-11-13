@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Library.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Aardvark.Compiler.DomainTypes\Aardvark.Compiler.DomainTypes.fsproj" />
+  </ItemGroup>
+  <Import Project="..\..\bin\Debug\Aardvark.Compiler.DomainTypes.MSBuild.targets" />
+  <Import Project="..\..\.paket\Paket.Restore.targets" />
+</Project>
