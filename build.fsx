@@ -20,6 +20,7 @@ Target "MergeDotNet" (fun () ->
         
     CopyFiles outFolder (!!Path.Combine("packages", "FSharp.Compiler.Service", "lib", "netstandard1.6", "**"))
     CopyFiles outFolder (!!Path.Combine("packages", "FSharp.Core", "lib", "netstandard1.6", "**"))
+    tracefn "out folder: %s" outFolder
 
     let args =
         [|
@@ -50,6 +51,8 @@ Target "MergeVS" (fun () ->
     let outFolder = 
         if config.debug then Path.GetFullPath(Path.Combine("bin", "Debug"))
         else Path.GetFullPath(Path.Combine("bin", "Release"))
+     
+    tracefn "out folder: %s" outFolder
       
     let args =
         [|
