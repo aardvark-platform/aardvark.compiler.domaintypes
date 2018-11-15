@@ -111,3 +111,10 @@ The generated type has multiple fields, depending on the types (i.e. degree of c
 # Usage in your project
 
 Compilation is fully integrated and transparent to your build pipeline via the [nuget package](https://www.nuget.org/packages/Aardvark.Compiler.DomainTypes.MSBuild/).
+
+# Limitations
+
+Currently there are a few limitations:
+ - Union types cannot be generic
+ - Arrays cannot contain domain types
+ - Domain types must appear in a flat namespace (and not in a module)
