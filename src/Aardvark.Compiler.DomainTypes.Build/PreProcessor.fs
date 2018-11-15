@@ -610,13 +610,13 @@ module TypeTree =
                         
                         aType = Tuple (elemDesc |> List.map (fun e -> e.aType))
                         aInit = fun s v ->
-                            let names = elems |> List.mapi (fun i _ -> sprintf "%s_item%d" v i)
+                            let names = elems |> List.mapi (fun i t -> sprintf "item%d" i)
                             let inits = List.map2 (fun i n -> i.aInit s n) elemDesc names
                             sprintf "let (%s) = %s in (%s)" (String.concat "," names) v (String.concat "," inits)
 
                         aUpdate = fun s m v -> 
-                            let mnames = elems |> List.mapi (fun i _ -> sprintf "%s_item%d" m i)
-                            let vnames = elems |> List.mapi (fun i _ -> sprintf "%s_item%d" v i)
+                            let mnames = elems |> List.mapi (fun i _ -> sprintf "item_m%d" i)
+                            let vnames = elems |> List.mapi (fun i _ -> sprintf "item_v%d" i)
 
                             String.concat "\r\n" [
                                 yield sprintf "let (%s) = %s" (String.concat "," vnames) v
@@ -1537,6 +1537,9 @@ module Preprocessing =
 
             elif e.IsFSharpUnion then   
                     
+                if e.GenericParameters.Count > 0 then
+                    do! error 1234 e.DeclarationLocation "generics not implementes yet: %A" e
+
                 let cases = e.UnionCases
                     
                     

@@ -81,3 +81,24 @@ type Researcher = { urdar : int }
 
 [<DomainType>]
 type Manager = { gabbl : int }
+
+[<DomainType>]
+type ArrWr = { arr : array<int>; gumml : int * int }
+
+[<DomainType>]
+type TupleUnion =
+    | Knubbl of int * int * int
+    | Gabbl of char
+
+[<DomainType>]
+type TupleUnion2 =
+    | Knubbl2 of a : int * b : int * c : int // need to be named differently
+    | Gabbl2 of super : char
+
+//[<DomainType>]
+//type TTree<'a> =
+//    | TLeaf of 'a
+//    | TNode of 'a * TTree<'a>
+
+[<DomainType>]
+type Generic<'a> = { gabbl : hset<'a> }

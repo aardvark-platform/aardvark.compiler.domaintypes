@@ -77,4 +77,13 @@ let main argv =
                 yield! fi c
         }
 
+    let a = { value = 12; children = PList.ofList [{value=10;children=PList.empty}] }
+    let b = { roots = PList.ofList [a] }
+    let blubber = MTree.Create(b)
+
+    let rsearcher = { Groups.urdar = 1 }
+    let a = { value = rsearcher; children = PList.ofList [{value=rsearcher;children=PList.empty}] }
+    let b = { roots = PList.ofList [a] }
+    let blubber2 = MTree.Create(b)
+
     0

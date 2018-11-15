@@ -16,11 +16,13 @@ let main argv =
             | Severity.Warning -> Report.Warn("[DTC] {0}: {1}", file, msg.message)
             | Severity.Error -> Report.Error("[DTC] {0}: {1}", file, msg.message)
 
+    let projFile = Path.combine  ["..";"ExampleDotnetCore";"ExampleDotnetCore.fsproj"]
+    
     let run = 
         Preprocessing.runFileByFile 
             true 
             log
-            @"C:\Development\PRo3D\src\PRo3D.Viewer\PRo3D.Viewer.fsproj"
+            projFile
             TargetType.Exe
             (Set.ofList [
                 @"C:\Development\PRo3D\packages\Aardium\lib\netstandard2.0\Aardium.dll"
