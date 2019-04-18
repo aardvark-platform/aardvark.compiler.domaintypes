@@ -12,6 +12,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Aardvark.Compiler.DomainTypes\Aardvark.Compiler.DomainTypes.fsproj" />
   </ItemGroup>
+  <Import Project="..\..\bin\Debug\Aardvark.Compiler.DomainTypes.MSBuild.targets" />
   <Import Project="..\..\.paket\Paket.Restore.targets" />
-    <Import Project="..\..\bin\Debug\Aardvark.Compiler.DomainTypes.MSBuild.targets" />
 </Project>
