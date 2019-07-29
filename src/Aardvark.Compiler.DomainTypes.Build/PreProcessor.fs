@@ -2014,7 +2014,7 @@ module Preprocessing =
                                 let hasErrors = errors.Length > 0
                                 if hasErrors then
                                     log {
-                                        severity    = Severity.Warning
+                                        severity    = Severity.Info
                                         file        = file
                                         startLine   = -1
                                         endLine     = -1

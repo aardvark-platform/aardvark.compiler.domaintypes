@@ -2,209 +2,8 @@
 
 open System
 open System.IO
-open System.Text.RegularExpressions
 open Aardvark.Base
 open Aardvark.Compiler.DomainTypes
-open System.Runtime.InteropServices
-open FSharp.Compiler.SourceCodeServices
-
-[<Struct; StructuredFormatDisplay("{AsString}"); CustomEquality; CustomComparison>]
-type SemVer(major : int, minor : int, build : int, revision : int, suffix : string) =
-    static let rx = Regex @"^([0-9]+)\.([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-.*)?$"
-    
-    member x.Major = major
-    member x.Minor = minor
-    member x.Build = if build < 0 then 0 else build
-    member x.Revision = if revision < 0 then 0 else revision
-    member x.Suffix = if String.IsNullOrEmpty suffix then "" else suffix
-
-    member private x.AsString = x.ToString()
-
-    override x.ToString() =
-        if String.IsNullOrWhiteSpace suffix then
-            if revision >= 0 then String.Format("{0}.{1}.{2}.{3}", major, minor, build, revision)
-            elif build >= 0 then String.Format("{0}.{1}.{2}", major, minor, build)
-            else String.Format("{0}.{1}", major, minor)
-        else
-            if revision >= 0 then String.Format("{0}.{1}.{2}.{3}-{4}", major, minor, build, revision, suffix)
-            elif build >= 0 then String.Format("{0}.{1}.{2}-{3}", major, minor, build, suffix)
-            else String.Format("{0}.{1}-{2}", major, minor, suffix)
-         
-    static member TryParse(str : string, [<Out>] value : byref<SemVer>) =
-        let m = rx.Match str
-        if m.Success then
-            let major = m.Groups.[1].Value |> int
-            let minor = m.Groups.[2].Value |> int
-            let build = if m.Groups.[3].Success then m.Groups.[3].Value.Substring(1) |> int else -1
-            let revision = if m.Groups.[4].Success then m.Groups.[4].Value.Substring(1) |> int else -1
-            let suffix = if m.Groups.[5].Success then m.Groups.[5].Value.Substring(1) else ""
-            value <- SemVer(major, minor, build, revision, suffix)
-            true
-        else
-            false
-            
-    member x.CompareTo (o : SemVer) =
-        let c = compare x.Major o.Major
-        if c <> 0 then c
-        else
-            let c = compare x.Minor o.Minor
-            if c <> 0 then c
-            else
-                let c = compare x.Build o.Build
-                if c <> 0 then c
-                else
-                    let c = compare x.Revision o.Revision
-                    if c <> 0 then c
-                    else
-                        let xs = x.Suffix
-                        let os = o.Suffix
-                        if xs = "" && os = "" then 0
-                        elif xs = "" then 1
-                        elif os = "" then -1
-                        else compare xs os
-
-    override x.GetHashCode() =
-        HashCode.Combine(x.Major.GetHashCode(), x.Minor.GetHashCode(), x.Build.GetHashCode(), x.Revision.GetHashCode(), x.Suffix.GetHashCode())
-
-    override x.Equals (o : obj) =
-        match o with
-        | :? SemVer as o ->
-            x.Major = o.Major &&
-            x.Minor = o.Minor &&
-            x.Build = o.Build &&
-            x.Revision = o.Revision &&
-            x.Suffix = o.Suffix
-        | _ ->
-            false
-
-    interface IComparable with
-        member x.CompareTo (o : obj) =
-            match o with
-            | :? SemVer as o -> x.CompareTo o
-            | _ -> failwith "uncomparable"
-
-    new(major : int, minor : int, build : int, revision : int) = SemVer(major, minor, build, revision, "")
-    new(major : int, minor : int, build : int) = SemVer(major, minor, build, -1, "")
-    new(major : int, minor : int) = SemVer(major, minor, -1, -1, "")
-
-    new(major : int, minor : int, build : int, suffix : string) = SemVer(major, minor, build, -1, suffix)
-    new(major : int, minor : int, suffix : string) = SemVer(major, minor, -1, -1, suffix)
-
-
-
-type TargetFrameworkKind =
-    | NetCoreApp
-    | NetStandard
-    | NetFramework
-
-[<StructuredFormatDisplay("{AsString}")>]
-type TargetFramework = { kind : TargetFrameworkKind; version : SemVer } with
-    
-    member private x.AsString = x.ToString()
-    
-    override x.ToString() =
-        let v = x.version
-        match x.kind with
-        | NetCoreApp -> sprintf "netcoreapp%s" (string v)
-        | NetStandard -> sprintf "netstandard%s" (string v)
-        | NetFramework -> 
-            let vstr =
-                if v.Revision > 0 then sprintf "%d%d%d%d" v.Major v.Minor v.Build v.Revision
-                elif v.Build > 0 then sprintf "%d%d%d" v.Major v.Minor v.Build
-                else sprintf "%d%d" v.Major v.Minor
-            sprintf "net%s" vstr
-
-
-module TargetFramework =
-
-    let private rx = Regex(@"^(netstandard|netcoreapp|net)([0-9\.]+)$", RegexOptions.IgnoreCase)
-    let private tryCreateRealVersion (kind : TargetFrameworkKind) (v : string) =
-        match SemVer.TryParse v with
-        | (true, ver) -> Some { kind = kind; version = ver }
-        | _ -> None
-        
-    let private tryCreateOldVersion (kind : TargetFrameworkKind) (v : string) =
-        match System.Int32.TryParse v with
-        | (true, _) -> 
-            let components = v.ToCharArray() |> Array.map (fun c -> int c - int '0')
-            if components.Length = 2 then
-                Some { kind = kind; version = SemVer(components.[0], components.[1]) }
-            elif components.Length = 3 then
-                Some { kind = kind; version = SemVer(components.[0], components.[1], components.[2]) }
-            elif components.Length = 4 then
-                Some { kind = kind; version = SemVer(components.[0], components.[1], components.[2], components.[3]) }
-            else
-                None
-        | _ -> 
-            None
-
-    let tryParse (str : string) =
-        let m = rx.Match (str.Trim())
-        if m.Success then
-            let fw = m.Groups.[1].Value.ToLower()
-            let v = m.Groups.[2].Value
-            match fw with
-            | "netstandard" -> tryCreateRealVersion NetStandard v
-            | "netcoreapp" -> tryCreateRealVersion NetCoreApp v
-            | _ -> tryCreateOldVersion NetFramework v
-
-        else
-            None
-
-    let netstandard (f : TargetFramework) =
-        match f.kind with
-        | NetStandard -> 
-            Some f.version
-        | NetFramework ->
-            if f.version >= SemVer(4,7,2) then Some <| SemVer(2,0)
-            elif f.version >= SemVer(4,6,1) then Some <| SemVer(1,4)
-            elif f.version >= SemVer(4,5,1) then Some <| SemVer(1,2)
-            elif f.version >= SemVer(4,5) then Some <| SemVer(1,1)
-            else None
-        | NetCoreApp ->
-            if f.version >= SemVer(2,0) then Some <| SemVer(2,0)
-            elif f.version >= SemVer(1,0) then Some <| SemVer(1,0)
-            else None
-
-    let canReference (project : TargetFramework) (lib : TargetFramework) =
-        match project.kind, lib.kind with
-        | NetFramework, NetFramework
-        | NetCoreApp, NetCoreApp
-        | NetStandard, NetStandard ->
-            project.version >= lib.version
-
-        | NetStandard, NetCoreApp
-        | NetStandard, NetFramework
-        | NetCoreApp, NetFramework
-        | NetFramework, NetCoreApp -> 
-            false
-
-        | _, NetStandard ->
-            match netstandard project with
-            | Some v -> v >= lib.version
-            | None -> false
-
-    let private versionDouble (v : SemVer) =
-        if v.Revision >= 0 then float v.Major + 0.1 * (float v.Minor) + 0.01 * (float v.Build) + 0.001 * (float v.Revision)
-        elif v.Build >= 0 then float v.Major + 0.1 * (float v.Minor) + 0.01 * (float v.Build) 
-        elif v.Minor >= 0 then float v.Major + 0.1 * (float v.Minor) 
-        else float v.Major 
-
-    let private score (project : TargetFramework) (lib : TargetFramework) =
-        if project.kind = lib.kind then 10000.0 * versionDouble lib.version
-        else versionDouble lib.version
-
-    let chooseReference (project : TargetFramework) (available : seq<TargetFramework>) =
-        let compatible =
-            available 
-            |> Seq.filter (canReference project)
-            |> Seq.toList
-
-        match compatible with
-        | [] -> None
-        | [s] -> Some s
-        | many -> many |> List.maxBy (score project) |> Some
-        
 
 open Dotnet.ProjInfo
 open Dotnet.ProjInfo.Workspace
@@ -223,7 +22,7 @@ let rec private projInfo additionalMSBuildProps file =
     
     let projectAssetsJsonPath = Path.Combine(projDir, "obj", "project.assets.json")
     if netcore && not(File.Exists(projectAssetsJsonPath)) then
-        let (s, _) = runCmd "dotnet" ["restore"; file]
+        let (s, a) = runCmd "dotnet" ["restore"; sprintf "\"%s\"" file]
         if s <> 0 then 
             failwithf "Cannot find restored info for project %s" file
     
@@ -286,19 +85,13 @@ let main argv =
             let argv = ()
             let file = Path.GetFullPath file
             if File.Exists file then 
-                
-                Log.startTimed "%s" (Path.GetFileName file)
-                let dir = Path.GetDirectoryName file
+                let sw = System.Diagnostics.Stopwatch.StartNew()
+                Log.start "%s" (Path.GetFileName file)
                 let netcore, res = projInfo [] file
                 match res with
                 | Result.Ok [Ok (Inspect.GetResult.FscArgs a)] ->
-
-                    let log (e : ErrorInfo) =
-                        match e.severity with
-                        | Severity.Debug -> () //Log.line "%s" e.message
-                        | Severity.Error -> Log.error "%s" e.message
-                        | Severity.Warning -> Log.warn "%s" e.message
-                        | Severity.Info -> () //Log.line "%s" e.message
+                    let messages = System.Collections.Generic.List<ErrorInfo>()
+                    let log (e : ErrorInfo) = messages.Add e
 
                     let references = a |> List.choose (fun o -> if o.StartsWith "-r:" then Some (o.Substring 3) else None) |> Set.ofList
                     let files = 
@@ -329,17 +122,32 @@ let main argv =
                             targetType
                             references
                             files
+                        |> Async.RunSynchronously
+                    
+                    sw.Stop()
 
-                    match Async.RunSynchronously res with
+                    let messages = messages |> Seq.filter (fun m -> m.severity = Severity.Warning || m.severity = Severity.Error) |> Seq.toArray
+
+                    if messages.Length > 0 then 
+                        let errors = messages |> Array.exists (fun m -> m.severity = Severity.Error)
+                        Log.start "generate returned %s" (if errors then "errors" else "warnings")
+                        for msg in messages do
+                            let name = Path.GetFileName msg.file
+                            match msg.severity with
+                            | Severity.Error -> Log.error "%s(%d,%d): %s" name msg.startLine msg.startColumn msg.message
+                            | Severity.Warning -> Log.warn "%s(%d,%d): %s" name msg.startLine msg.startColumn msg.message
+                            | _ -> () 
+                        Log.stop()
+
+                    match res with
                     | Some generated -> 
-                        let old = files |> Seq.map (fun f -> Path.GetFullPath(Path.Combine(dir, f))) |> Set.ofSeq
                         let gen = 
                             generated 
-                            |> Array.filter (fun f -> not (Set.contains (Path.GetFullPath f) old)) 
+                            |> Array.filter (fun f -> Path.GetFileName(f).EndsWith ".g.fs") 
                             |> Array.map Path.GetFileName
-
+                            
                         if gen.Length > 0 then
-                            Log.start "generated"
+                            Log.start "generate took %A" sw.MicroTime
                             for g in gen do Log.line "%s" g
                             Log.stop()
                         else
@@ -364,6 +172,8 @@ let main argv =
                         Log.error "msbuild failed"
                         
                     status <- -1
+
+
                 Log.stop()
             else
                 status <- -2

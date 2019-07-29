@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.26430.4
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29102.190
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Aardvark.Compiler.DomainTypes.MSBuild", "Aardvark.Compiler.DomainTypes.MSBuild\Aardvark.Compiler.DomainTypes.MSBuild.fsproj", "{378DF51A-1C31-4AF4-ACED-9CFB5C1252E9}"
 EndProject
