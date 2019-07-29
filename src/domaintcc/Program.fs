@@ -7,8 +7,9 @@ open Aardvark.Compiler.DomainTypes
 
 open Dotnet.ProjInfo
 open Dotnet.ProjInfo.Workspace
+open System.Reflection
 
-let rec private projInfo additionalMSBuildProps file =
+let rec private projInfo additionalMSBuildProps (file : string) =
 
     let projDir = Path.GetDirectoryName file
     let runCmd exePath args = Utils.runProcess ignore projDir exePath (args |> String.concat " ")
@@ -77,7 +78,17 @@ let rec private projInfo additionalMSBuildProps file =
 [<EntryPoint>]
 let main argv =
     if argv.Length < 1 then
-        Log.error "usage [paths-to-fsproj(s)]"
+        let version = 
+            Assembly.GetEntryAssembly()
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                .InformationalVersion
+                .ToString();
+        printfn "domaintcc %s" version
+        printfn "-------------"
+        printfn ""
+        printfn "Usage:"
+        printfn "  domaintcc [fsproj(s)]"
+
         -2
     else
         let mutable status = 0
