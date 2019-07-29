@@ -2,9 +2,8 @@
 
 open System
 open System.Text
-open Microsoft.FSharp.Compiler
-open Microsoft.FSharp.Compiler.Range
-open Microsoft.FSharp.Compiler.SourceCodeServices
+open FSharp.Compiler
+open FSharp.Compiler.SourceCodeServices
 
 type Severity =
     | Debug
@@ -55,7 +54,7 @@ module ErrorInfo =
             message = prefix + err.message
         }
 
-type Result<'a> = 
+type CodeGenResult<'a> = 
     | Success of 'a
     | Error of ErrorInfo
 
@@ -67,7 +66,7 @@ type CodeGenState =
         warnings : list<ErrorInfo>
     }
         
-type CodeGen<'a> = { generate : CodeGenState -> CodeGenState * Result<'a> }
+type CodeGen<'a> = { generate : CodeGenState -> CodeGenState * CodeGenResult<'a> }
 
 type CodeGenBuilder() =
     static let instance = CodeGenBuilder()
@@ -159,7 +158,7 @@ module CodeGen =
             }
         Printf.kprintf inner fmt
 
-    let error (code : int) (range : range) (fmt : Printf.StringFormat<'a, CodeGen<'x>>) : 'a =
+    let error (code : int) (range : Range.range) (fmt : Printf.StringFormat<'a, CodeGen<'x>>) : 'a =
         Printf.kprintf (fun str ->
             { generate = fun s ->
                 s, Error {
@@ -175,7 +174,7 @@ module CodeGen =
             }
         ) fmt
 
-    let warn (code : int) (range : range) (fmt : Printf.StringFormat<'a, CodeGen<unit>>) : 'a =
+    let warn (code : int) (range : Range.range) (fmt : Printf.StringFormat<'a, CodeGen<unit>>) : 'a =
         Printf.kprintf (fun str ->
             { generate = fun s ->
                 let info = 

@@ -7,7 +7,9 @@
     <Compile Include="Library.fs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Aardvark.Compiler.DomainTypes\Aardvark.Compiler.DomainTypes.fsproj" />
+    <Reference Include="Aardvark.Compiler.DomainTypes">
+      <HintPath>..\..\bin\Debug\netstandard2.0\Aardvark.Compiler.DomainTypes.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <Import Project="..\..\bin\Debug\Aardvark.Compiler.DomainTypes.MSBuild.targets" />
   <Import Project="..\..\.paket\Paket.Restore.targets" />

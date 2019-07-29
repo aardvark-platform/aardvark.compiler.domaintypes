@@ -1,26 +1,33 @@
-#load @"paket-files/build/vrvis/Aardvark.Fake/DefaultSetup.fsx"
-#r "System.Linq.dll"
+open Fake.IO
+
+#r "paket: groupref Build //"
+#load ".fake/build.fsx/intellisense.fsx"
+#load @"paket-files/build/aardvark-platform/aardvark.fake/DefaultSetup.fsx"
 
 open Fake
 open System
 open System.IO
 open System.Diagnostics
 open Aardvark.Fake
+open Fake.Core.TargetOperators
+open Fake.Core
+open Fake.IO
+open Fake.IO.Globbing.Operators
 
 
 do Environment.CurrentDirectory <- __SOURCE_DIRECTORY__
 
 DefaultSetup.install ["src/Aardvark.Compiler.DomainTypes.sln"]
 
-Target "MergeDotNet" (fun () ->
+Target.create "MergeDotNet" (fun _ ->
     
     let outFolder = 
         if config.debug then Path.GetFullPath(Path.Combine("bin", "Debug", "netstandard2.0"))
         else Path.GetFullPath(Path.Combine("bin", "Release", "netstandard2.0"))
         
-    CopyFiles outFolder (!!Path.Combine("packages", "FSharp.Compiler.Service", "lib", "netstandard1.6", "**"))
-    CopyFiles outFolder (!!Path.Combine("packages", "FSharp.Core", "lib", "netstandard1.6", "**"))
-    tracefn "out folder: %s" outFolder
+    Shell.copyFiles outFolder (!!Path.Combine("packages", "FSharp.Compiler.Service", "lib", "netstandard1.6", "**"))
+    Shell.copyFiles outFolder (!!Path.Combine("packages", "FSharp.Core", "lib", "netstandard1.6", "**"))
+    Trace.logfn "out folder: %s" outFolder
 
     let args =
         [|
@@ -34,25 +41,28 @@ Target "MergeDotNet" (fun () ->
         |]
 
     let worked = 
-        let args (i : ProcessStartInfo) =
-            i.FileName <- Path.GetFullPath(Path.Combine("packages", "build", "ILRepack", "tools", "ILRepack.exe"))
-            i.Arguments <- String.concat " " args
-            i.WorkingDirectory <- outFolder
-            ()
-        ProcessHelper.execProcess args TimeSpan.MaxValue
-    if worked then
-        tracefn "merged"
+        let paramters = 
+            { 
+                Program = Path.GetFullPath(Path.Combine("packages", "build", "ILRepack", "tools", "ILRepack.exe"))
+                WorkingDir = outFolder
+                CommandLine = String.concat " " args
+                Args = []
+            }
+
+        Fake.Core.Process.shellExec paramters
+    if worked = 0 then
+        Trace.log "merged"
     else
         failwith "error in ILRepack"
 )
 
-Target "MergeVS" (fun () ->
+Target.create "MergeVS" (fun _ ->
     
     let outFolder = 
         if config.debug then Path.GetFullPath(Path.Combine("bin", "Debug"))
         else Path.GetFullPath(Path.Combine("bin", "Release"))
      
-    tracefn "out folder: %s" outFolder
+    Trace.logfn "out folder: %s" outFolder
       
     let args =
         [|
@@ -65,19 +75,22 @@ Target "MergeVS" (fun () ->
         |]
 
     let worked = 
-        let args (i : ProcessStartInfo) =
-            i.FileName <- Path.GetFullPath(Path.Combine("packages", "build", "ILRepack", "tools", "ILRepack.exe"))
-            i.Arguments <- String.concat " " args
-            i.WorkingDirectory <- outFolder
-            ()
-        ProcessHelper.execProcess args TimeSpan.MaxValue
-    if worked then
-        tracefn "merged"
+        let paramters = 
+            { 
+                Program = Path.GetFullPath(Path.Combine("packages", "build", "ILRepack", "tools", "ILRepack.exe"))
+                WorkingDir = outFolder
+                CommandLine = String.concat " " args
+                Args = []
+            }
+
+        Fake.Core.Process.shellExec paramters
+    if worked = 0 then
+        Trace.log "merged"
     else
         failwith "error in ILRepack"
 )
 
-Target "Merge" (fun () -> ())
+Target.create "Merge" (fun _ -> ())
 
 
 "Compile" ==> "MergeVS"

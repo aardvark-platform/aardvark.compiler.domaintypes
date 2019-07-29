@@ -1,0 +1,6 @@
+﻿Aardvark.Base.Incremental
+FSharp.Core
+FSharp.Compiler.Service
+Dotnet.ProjInfo
+Dotnet.ProjInfo.Workspace
+BlackFox.VsWhere

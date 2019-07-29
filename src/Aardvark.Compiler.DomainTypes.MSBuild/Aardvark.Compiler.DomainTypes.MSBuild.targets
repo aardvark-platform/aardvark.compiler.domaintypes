@@ -4,7 +4,7 @@
     <TaskAssembly Condition=" '$(MSBuildRuntimeType)' != 'Core'">Aardvark.Compiler.DomainTypes.MSBuild.VisualStudio.dll</TaskAssembly>
   </PropertyGroup>
   <UsingTask TaskName="Aardvark.Compiler.DomainTypes.Preprocess" AssemblyFile="$(TaskAssembly)" />
-  <Target Name="UpdateGeneratedFiles" AfterTargets="AfterResolveReferences" Condition="'@(Compile)' != ''">
+  <Target Name="UpdateGeneratedFiles" AfterTargets="AfterResolveReferences" Condition="'@(Compile)' != '' And '$(GenerateDomainTypes)' != 'false'">
     <ItemGroup>
       <OldItems Include="@(Compile)" />
     </ItemGroup>
