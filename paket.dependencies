@@ -1,30 +1,30 @@
-framework: net45, net46, net47, netstandard2.0, net471, netcoreapp2.0
+framework: auto-detect
 source https://api.nuget.org/v3/index.json
 
 copy_local: true
 
-nuget FSharp.Core ~> 4.6.2
+nuget FSharp.Core                             ~> 4.6.2
 
-nuget Aardvark.Base ~> 4.5.8
-nuget Aardvark.Base.FSharp ~> 4.5.8
-nuget Aardvark.Base.Incremental ~> 4.5.8
-nuget Aardvark.Base.Essentials ~> 4.5.8
+nuget Aardvark.Base                           ~> 4.5.8
+nuget Aardvark.Base.FSharp                    ~> 4.5.8
+nuget Aardvark.Base.Incremental               ~> 4.5.8
+nuget Aardvark.Base.Essentials                ~> 4.5.8
 
-nuget FSharp.Compiler.Service                 ~> 25.0.1
+nuget FSharp.Compiler.Service                 ~> 30.0.0
 
-nuget Microsoft.Build.Tasks.Core              ~> 15.6.85
-nuget Microsoft.Build.Framework               ~> 15.6.85
-nuget Microsoft.Build.Utilities.Core          ~> 15.6.85
-nuget Microsoft.Build                         ~> 15.6.85
+nuget Microsoft.Build.Tasks.Core              ~> 16.0.461
+nuget Microsoft.Build.Framework               ~> 16.0.461
+nuget Microsoft.Build.Utilities.Core          ~> 16.0.461
+nuget Microsoft.Build                         ~> 16.0.461
 nuget Microsoft.NET.Sdk                       ~> 1.0.0-alpha
 
 nuget FSharpLint.MSBuild                      ~> 0.9.1-beta
+nuget Dotnet.ProjInfo                         ~> 0.36.0
+nuget Dotnet.ProjInfo.Workspace               ~> 0.36.0
+nuget BlackFox.VsWhere                        ~> 1.0.0
 
 group Build
-content: none
-framework: net45
 source https://api.nuget.org/v3/index.json
-
-nuget ILMerge ~> 2.14.1208
-nuget ILRepack ~> 2.1.0-beta1
-github vrvis/Aardvark.Fake:v4-temp
+nuget ILMerge                                 ~> 2.14.1208
+nuget ILRepack                                ~> 2.1.0-beta1
+github aardvark-platform/Aardvark.Fake:v5

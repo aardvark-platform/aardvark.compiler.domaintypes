@@ -2,274 +2,369 @@
 
 open System
 open System.IO
+open System.Text.RegularExpressions
 open Aardvark.Base
 open Aardvark.Compiler.DomainTypes
+open System.Runtime.InteropServices
+open FSharp.Compiler.SourceCodeServices
+
+[<Struct; StructuredFormatDisplay("{AsString}"); CustomEquality; CustomComparison>]
+type SemVer(major : int, minor : int, build : int, revision : int, suffix : string) =
+    static let rx = Regex @"^([0-9]+)\.([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-.*)?$"
+    
+    member x.Major = major
+    member x.Minor = minor
+    member x.Build = if build < 0 then 0 else build
+    member x.Revision = if revision < 0 then 0 else revision
+    member x.Suffix = if String.IsNullOrEmpty suffix then "" else suffix
+
+    member private x.AsString = x.ToString()
+
+    override x.ToString() =
+        if String.IsNullOrWhiteSpace suffix then
+            if revision >= 0 then String.Format("{0}.{1}.{2}.{3}", major, minor, build, revision)
+            elif build >= 0 then String.Format("{0}.{1}.{2}", major, minor, build)
+            else String.Format("{0}.{1}", major, minor)
+        else
+            if revision >= 0 then String.Format("{0}.{1}.{2}.{3}-{4}", major, minor, build, revision, suffix)
+            elif build >= 0 then String.Format("{0}.{1}.{2}-{3}", major, minor, build, suffix)
+            else String.Format("{0}.{1}-{2}", major, minor, suffix)
+         
+    static member TryParse(str : string, [<Out>] value : byref<SemVer>) =
+        let m = rx.Match str
+        if m.Success then
+            let major = m.Groups.[1].Value |> int
+            let minor = m.Groups.[2].Value |> int
+            let build = if m.Groups.[3].Success then m.Groups.[3].Value.Substring(1) |> int else -1
+            let revision = if m.Groups.[4].Success then m.Groups.[4].Value.Substring(1) |> int else -1
+            let suffix = if m.Groups.[5].Success then m.Groups.[5].Value.Substring(1) else ""
+            value <- SemVer(major, minor, build, revision, suffix)
+            true
+        else
+            false
+            
+    member x.CompareTo (o : SemVer) =
+        let c = compare x.Major o.Major
+        if c <> 0 then c
+        else
+            let c = compare x.Minor o.Minor
+            if c <> 0 then c
+            else
+                let c = compare x.Build o.Build
+                if c <> 0 then c
+                else
+                    let c = compare x.Revision o.Revision
+                    if c <> 0 then c
+                    else
+                        let xs = x.Suffix
+                        let os = o.Suffix
+                        if xs = "" && os = "" then 0
+                        elif xs = "" then 1
+                        elif os = "" then -1
+                        else compare xs os
+
+    override x.GetHashCode() =
+        HashCode.Combine(x.Major.GetHashCode(), x.Minor.GetHashCode(), x.Build.GetHashCode(), x.Revision.GetHashCode(), x.Suffix.GetHashCode())
+
+    override x.Equals (o : obj) =
+        match o with
+        | :? SemVer as o ->
+            x.Major = o.Major &&
+            x.Minor = o.Minor &&
+            x.Build = o.Build &&
+            x.Revision = o.Revision &&
+            x.Suffix = o.Suffix
+        | _ ->
+            false
+
+    interface IComparable with
+        member x.CompareTo (o : obj) =
+            match o with
+            | :? SemVer as o -> x.CompareTo o
+            | _ -> failwith "uncomparable"
+
+    new(major : int, minor : int, build : int, revision : int) = SemVer(major, minor, build, revision, "")
+    new(major : int, minor : int, build : int) = SemVer(major, minor, build, -1, "")
+    new(major : int, minor : int) = SemVer(major, minor, -1, -1, "")
+
+    new(major : int, minor : int, build : int, suffix : string) = SemVer(major, minor, build, -1, suffix)
+    new(major : int, minor : int, suffix : string) = SemVer(major, minor, -1, -1, suffix)
+
+
+
+type TargetFrameworkKind =
+    | NetCoreApp
+    | NetStandard
+    | NetFramework
+
+[<StructuredFormatDisplay("{AsString}")>]
+type TargetFramework = { kind : TargetFrameworkKind; version : SemVer } with
+    
+    member private x.AsString = x.ToString()
+    
+    override x.ToString() =
+        let v = x.version
+        match x.kind with
+        | NetCoreApp -> sprintf "netcoreapp%s" (string v)
+        | NetStandard -> sprintf "netstandard%s" (string v)
+        | NetFramework -> 
+            let vstr =
+                if v.Revision > 0 then sprintf "%d%d%d%d" v.Major v.Minor v.Build v.Revision
+                elif v.Build > 0 then sprintf "%d%d%d" v.Major v.Minor v.Build
+                else sprintf "%d%d" v.Major v.Minor
+            sprintf "net%s" vstr
+
+
+module TargetFramework =
+
+    let private rx = Regex(@"^(netstandard|netcoreapp|net)([0-9\.]+)$", RegexOptions.IgnoreCase)
+    let private tryCreateRealVersion (kind : TargetFrameworkKind) (v : string) =
+        match SemVer.TryParse v with
+        | (true, ver) -> Some { kind = kind; version = ver }
+        | _ -> None
+        
+    let private tryCreateOldVersion (kind : TargetFrameworkKind) (v : string) =
+        match System.Int32.TryParse v with
+        | (true, _) -> 
+            let components = v.ToCharArray() |> Array.map (fun c -> int c - int '0')
+            if components.Length = 2 then
+                Some { kind = kind; version = SemVer(components.[0], components.[1]) }
+            elif components.Length = 3 then
+                Some { kind = kind; version = SemVer(components.[0], components.[1], components.[2]) }
+            elif components.Length = 4 then
+                Some { kind = kind; version = SemVer(components.[0], components.[1], components.[2], components.[3]) }
+            else
+                None
+        | _ -> 
+            None
+
+    let tryParse (str : string) =
+        let m = rx.Match (str.Trim())
+        if m.Success then
+            let fw = m.Groups.[1].Value.ToLower()
+            let v = m.Groups.[2].Value
+            match fw with
+            | "netstandard" -> tryCreateRealVersion NetStandard v
+            | "netcoreapp" -> tryCreateRealVersion NetCoreApp v
+            | _ -> tryCreateOldVersion NetFramework v
+
+        else
+            None
+
+    let netstandard (f : TargetFramework) =
+        match f.kind with
+        | NetStandard -> 
+            Some f.version
+        | NetFramework ->
+            if f.version >= SemVer(4,7,2) then Some <| SemVer(2,0)
+            elif f.version >= SemVer(4,6,1) then Some <| SemVer(1,4)
+            elif f.version >= SemVer(4,5,1) then Some <| SemVer(1,2)
+            elif f.version >= SemVer(4,5) then Some <| SemVer(1,1)
+            else None
+        | NetCoreApp ->
+            if f.version >= SemVer(2,0) then Some <| SemVer(2,0)
+            elif f.version >= SemVer(1,0) then Some <| SemVer(1,0)
+            else None
+
+    let canReference (project : TargetFramework) (lib : TargetFramework) =
+        match project.kind, lib.kind with
+        | NetFramework, NetFramework
+        | NetCoreApp, NetCoreApp
+        | NetStandard, NetStandard ->
+            project.version >= lib.version
+
+        | NetStandard, NetCoreApp
+        | NetStandard, NetFramework
+        | NetCoreApp, NetFramework
+        | NetFramework, NetCoreApp -> 
+            false
+
+        | _, NetStandard ->
+            match netstandard project with
+            | Some v -> v >= lib.version
+            | None -> false
+
+    let private versionDouble (v : SemVer) =
+        if v.Revision >= 0 then float v.Major + 0.1 * (float v.Minor) + 0.01 * (float v.Build) + 0.001 * (float v.Revision)
+        elif v.Build >= 0 then float v.Major + 0.1 * (float v.Minor) + 0.01 * (float v.Build) 
+        elif v.Minor >= 0 then float v.Major + 0.1 * (float v.Minor) 
+        else float v.Major 
+
+    let private score (project : TargetFramework) (lib : TargetFramework) =
+        if project.kind = lib.kind then 10000.0 * versionDouble lib.version
+        else versionDouble lib.version
+
+    let chooseReference (project : TargetFramework) (available : seq<TargetFramework>) =
+        let compatible =
+            available 
+            |> Seq.filter (canReference project)
+            |> Seq.toList
+
+        match compatible with
+        | [] -> None
+        | [s] -> Some s
+        | many -> many |> List.maxBy (score project) |> Some
+        
+
+open Dotnet.ProjInfo
+open Dotnet.ProjInfo.Workspace
+
+let rec private projInfo additionalMSBuildProps file =
+
+    let projDir = Path.GetDirectoryName file
+    let runCmd exePath args = Utils.runProcess ignore projDir exePath (args |> String.concat " ")
+    
+    let additionalMSBuildProps = ("GenerateDomainTypes", "false") :: additionalMSBuildProps
+
+    let netcore =
+        match file with
+        | ProjectRecognizer.NetCoreSdk -> true
+        | _ -> false
+    
+    let projectAssetsJsonPath = Path.Combine(projDir, "obj", "project.assets.json")
+    if netcore && not(File.Exists(projectAssetsJsonPath)) then
+        let (s, _) = runCmd "dotnet" ["restore"; file]
+        if s <> 0 then 
+            failwithf "Cannot find restored info for project %s" file
+    
+    let getFscArgs = 
+        if netcore then
+            Dotnet.ProjInfo.Inspect.getFscArgs
+        else
+            let asFscArgs props =
+                let fsc = Microsoft.FSharp.Build.Fsc()
+                Dotnet.ProjInfo.FakeMsbuildTasks.getResponseFileFromTask props fsc
+            Dotnet.ProjInfo.Inspect.getFscArgsOldSdk (asFscArgs >> Ok)
+
+    let results =
+        let msbuildExec =
+            let msbuildPath =
+                if netcore then Dotnet.ProjInfo.Inspect.MSBuildExePath.DotnetMsbuild "dotnet"
+                else 
+                    let all = 
+                        BlackFox.VsWhere.VsInstances.getWithPackage "Microsoft.Component.MSBuild" true
+
+                    let probes =
+                        [
+                            @"MSBuild\Current\Bin\MSBuild.exe"
+                            @"MSBuild\15.0\Bin\MSBuild.exe"
+                        ]
+
+                    let msbuild =
+                        all |> List.tryPick (fun i ->
+                            probes |> List.tryPick (fun p ->
+                                let path = Path.Combine(i.InstallationPath, p)
+                                if File.Exists path then Some path
+                                else None
+                            )
+                        )
+
+                    match msbuild with
+                    | Some msbuild -> Dotnet.ProjInfo.Inspect.MSBuildExePath.Path msbuild
+                    | None ->
+                        failwith "no msbuild"
+            Dotnet.ProjInfo.Inspect.msbuild msbuildPath runCmd
+
+        let additionalArgs = additionalMSBuildProps |> List.map (Dotnet.ProjInfo.Inspect.MSBuild.MSbuildCli.Property)
+
+        let log = ignore
+
+
+        file
+        |> Inspect.getProjectInfos log msbuildExec [getFscArgs] additionalArgs
+
+    netcore, results
 
 [<EntryPoint>]
 let main argv =
+    if argv.Length < 1 then
+        Log.error "usage [paths-to-fsproj(s)]"
+        -2
+    else
+        let mutable status = 0
+        for file in argv do
+            let argv = ()
+            let file = Path.GetFullPath file
+            if File.Exists file then 
+                
+                Log.startTimed "%s" (Path.GetFileName file)
+                let dir = Path.GetDirectoryName file
+                let netcore, res = projInfo [] file
+                match res with
+                | Result.Ok [Ok (Inspect.GetResult.FscArgs a)] ->
 
-    let log (msg : ErrorInfo) =
-        let file = Path.GetFileName msg.file
-        match msg.severity with
-            | Severity.Debug -> Report.Line(3, "[DTC] {0}: {1}", file, msg.message)
-            | Severity.Info -> Report.Line("[DTC] {0}: {1}", file, msg.message)
-            | Severity.Warning -> Report.Warn("[DTC] {0}: {1}", file, msg.message)
-            | Severity.Error -> Report.Error("[DTC] {0}: {1}", file, msg.message)
+                    let log (e : ErrorInfo) =
+                        match e.severity with
+                        | Severity.Debug -> () //Log.line "%s" e.message
+                        | Severity.Error -> Log.error "%s" e.message
+                        | Severity.Warning -> Log.warn "%s" e.message
+                        | Severity.Info -> () //Log.line "%s" e.message
 
-    let projFile = Path.combine  ["..";"ExampleDotnetCore";"ExampleDotnetCore.fsproj"]
-    
-    let run = 
-        Preprocessing.runFileByFile 
-            true 
-            log
-            projFile
-            TargetType.Exe
-            (Set.ofList [
-                @"C:\Development\PRo3D\packages\Aardium\lib\netstandard2.0\Aardium.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Application\lib\netstandard2.0\Aardvark.Application.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Application.WinForms\lib\net471\Aardvark.Application.WinForms.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Application.WinForms.GL\lib\net471\Aardvark.Application.WinForms.GL.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Application.WinForms.Vulkan\lib\net471\Aardvark.Application.WinForms.Vulkan.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Base\lib\netstandard2.0\Aardvark.Base.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Base.Essentials\lib\netstandard2.0\Aardvark.Base.Essentials.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Base.FSharp\lib\netstandard2.0\Aardvark.Base.FSharp.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Base.Incremental\lib\netstandard2.0\Aardvark.Base.Incremental.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Base.IO\lib\netstandard2.0\Aardvark.Base.IO.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Base.Rendering\lib\netstandard2.0\Aardvark.Base.Rendering.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Base.Runtime\lib\netstandard2.0\Aardvark.Base.Runtime.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Base.Telemetry\lib\netstandard2.0\Aardvark.Base.Telemetry.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Base.TypeProviders\lib\netstandard2.0\Aardvark.Base.TypeProviders.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Cef.WinForms\lib\net471\Aardvark.Cef.WinForms.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Cef.WinForms\lib\net471\Aardvark.Cef.WinForms.Process.exe"
-                @"C:\Development\PRo3D\packages\Aardvark.Compiler.DomainTypes\lib\netstandard2.0\Aardvark.Compiler.DomainTypes.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Fitting.Base\lib\net471\Aardvark.Fitting.Base.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Fitting.Planes\lib\net471\Aardvark.Fitting.Planes.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Geometry.Clustering\lib\netstandard2.0\Aardvark.Geometry.Clustering.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Geometry.Intersection\lib\netstandard2.0\Aardvark.Geometry.Intersection.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Geometry.PointTree\lib\netstandard2.0\Aardvark.Geometry.PointTree.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Geometry.PolyMesh\lib\netstandard2.0\Aardvark.Geometry.PolyMesh.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.GPGPU\lib\netstandard2.0\Aardvark.GPGPU.dll"
-                @"C:\Development\PRo3D\bin\Debug\Aardvark.Opc.dll"
-                @"C:\Development\PRo3D\bin\Debug\Aardvark.Prinziple.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Rendering.GL\lib\netstandard2.0\Aardvark.Rendering.GL.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Rendering.Text\lib\netstandard2.0\Aardvark.Rendering.Text.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Rendering.Vulkan\lib\netstandard2.0\Aardvark.Rendering.Vulkan.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.SceneGraph\lib\netstandard2.0\Aardvark.SceneGraph.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.Service\lib\netstandard2.0\Aardvark.Service.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.UI\lib\netstandard2.0\Aardvark.UI.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.UI.Primitives\lib\netstandard2.0\Aardvark.UI.Primitives.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.VRVis.Base\lib\netstandard2.0\Aardvark.VRVis.Base.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.VRVis.Geometry\lib\netstandard2.0\Aardvark.VRVis.Geometry.dll"
-                @"C:\Development\PRo3D\packages\Another.Unofficial.Xilium.CefGlue.UnpackNativeDependencies\lib\net45\CefGlue.UnpackNativeDependencies.dll"
-                @"C:\Development\PRo3D\packages\CommonMark.NET\lib\net45\CommonMark.dll"
-                @"C:\Development\PRo3D\bin\Debug\CSharpUtils.dll"
-                @"C:\Development\PRo3D\packages\DevILSharp\lib\netstandard2.0\DevILSharp.dll"
-                @"C:\Development\PRo3D\packages\FShade.Core\lib\netstandard2.0\FShade.Core.dll"
-                @"C:\Development\PRo3D\packages\FShade.GLSL\lib\netstandard2.0\FShade.GLSL.dll"
-                @"C:\Development\PRo3D\packages\FShade.Imperative\lib\netstandard2.0\FShade.Imperative.dll"
-                @"C:\Development\PRo3D\packages\FShade.SpirV\lib\netstandard2.0\FShade.SpirV.dll"
-                @"C:\Development\PRo3D\packages\FSharp.Core\lib\net45\FSharp.Core.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\FSharp\.NETFramework\v4.0\4.3.0.0\Type Providers\FSharp.Data.TypeProviders.dll"
-                @"C:\Development\PRo3D\packages\FsPickler\lib\net45\FsPickler.dll"
-                @"C:\Development\PRo3D\packages\FsPickler.Json\lib\net45\FsPickler.Json.dll"
-                @"C:\Development\PRo3D\packages\GLSLangSharp\lib\netstandard2.0\GLSLangSharp.dll"
-                @"C:\Development\PRo3D\packages\SharpZipLib\lib\20\ICSharpCode.SharpZipLib.dll"
-                @"C:\Development\PRo3D\packages\Unofficial.LibTessDotNet\lib\netstandard2.0\LibTessDotNet.dll"
-                @"C:\Development\PRo3D\packages\WindowsAPICodePack-Core\lib\Microsoft.WindowsAPICodePack.dll"
-                @"C:\Development\PRo3D\packages\WindowsAPICodePack-Shell\lib\Microsoft.WindowsAPICodePack.Shell.dll"
-                @"C:\Development\PRo3D\packages\WindowsAPICodePack-ShellExtensions\lib\Microsoft.WindowsAPICodePack.ShellExtensions.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\mscorlib.dll"
-                @"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\Microsoft\Microsoft.NET.Build.Extensions\net471\lib\netfx.force.conflicts.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\netstandard.dll"
-                @"C:\Development\PRo3D\packages\Newtonsoft.Json\lib\net45\Newtonsoft.Json.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.OpenCvSharp\lib\net40\OpenCvSharp.Blob.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.OpenCvSharp\lib\net40\OpenCvSharp.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.OpenCvSharp\lib\net40\OpenCvSharp.Extensions.dll"
-                @"C:\Development\PRo3D\packages\Aardvark.OpenCvSharp\lib\net40\OpenCvSharp.UserInterface.dll"
-                @"C:\Development\PRo3D\packages\Unofficial.OpenTK\lib\netstandard2.0\OpenTK.dll"
-                @"C:\Development\PRo3D\packages\Unofficial.OpenTK.GLControl\lib\net471\OpenTK.GLControl.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\PresentationFramework.dll"
-                @"C:\Development\PRo3D\packages\SKGL\lib\SKGL.dll"
-                @"C:\Development\PRo3D\packages\Suave\lib\net40\Suave.dll"
-                @"C:\Development\PRo3D\packages\System.Collections.Immutable\lib\netstandard2.0\System.Collections.Immutable.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\System.Core.dll"
-                @"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\Microsoft\Microsoft.NET.Build.Extensions\net471\lib\System.Data.Common.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\System.Data.dll"
-                @"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\Microsoft\Microsoft.NET.Build.Extensions\net471\lib\System.Diagnostics.StackTrace.dll"
-                @"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\Microsoft\Microsoft.NET.Build.Extensions\net471\lib\System.Diagnostics.Tracing.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\System.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\System.Drawing.dll"
-                @"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\Microsoft\Microsoft.NET.Build.Extensions\net471\lib\System.Globalization.Extensions.dll"
-                @"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\Microsoft\Microsoft.NET.Build.Extensions\net471\lib\System.IO.Compression.dll"
-                @"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\Microsoft\Microsoft.NET.Build.Extensions\net471\lib\System.Net.Http.dll"
-                @"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\Microsoft\Microsoft.NET.Build.Extensions\net471\lib\System.Net.Sockets.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\System.Numerics.dll"
-                @"C:\Development\PRo3D\packages\System.Reactive\lib\net46\System.Reactive.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\System.Runtime.Serialization.dll"
-                @"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\Microsoft\Microsoft.NET.Build.Extensions\net471\lib\System.Runtime.Serialization.Primitives.dll"
-                @"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\Microsoft\Microsoft.NET.Build.Extensions\net471\lib\System.Security.Cryptography.Algorithms.dll"
-                @"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\Microsoft\Microsoft.NET.Build.Extensions\net471\lib\System.Security.SecureString.dll"
-                @"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\Microsoft\Microsoft.NET.Build.Extensions\net471\lib\System.Threading.Overlapped.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\System.Windows.Forms.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\System.Xml.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\System.Xml.Linq.dll"
-                @"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\MSBuild\Microsoft\Microsoft.NET.Build.Extensions\net471\lib\System.Xml.XPath.XDocument.dll"
-                @"C:\Development\PRo3D\packages\Unofficial.Typography\lib\netstandard2.0\Unofficial.Typography.dll"
-                @"C:\Development\PRo3D\packages\Another.Unofficial.Xilium.CefGlue\lib\net40\Xilium.CefGlue.dll"
-                @"C:\Development\PRo3D\packages\Another.Unofficial.Xilium.CefGlue.WindowsForms\lib\net40\Xilium.CefGlue.WindowsForms.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\Microsoft.Win32.Primitives.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.AppContext.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Collections.Concurrent.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Collections.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Collections.NonGeneric.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Collections.Specialized.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.ComponentModel.Annotations.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.ComponentModel.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.ComponentModel.EventBasedAsync.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.ComponentModel.Primitives.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.ComponentModel.TypeConverter.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Console.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Diagnostics.Contracts.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Diagnostics.Debug.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Diagnostics.FileVersionInfo.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Diagnostics.Process.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Diagnostics.TextWriterTraceListener.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Diagnostics.Tools.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Diagnostics.TraceSource.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Drawing.Primitives.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Dynamic.Runtime.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Globalization.Calendars.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Globalization.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.IO.Compression.ZipFile.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.IO.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.IO.FileSystem.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.IO.FileSystem.DriveInfo.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.IO.FileSystem.Primitives.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.IO.FileSystem.Watcher.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.IO.IsolatedStorage.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.IO.MemoryMappedFiles.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.IO.Pipes.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.IO.UnmanagedMemoryStream.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Linq.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Linq.Expressions.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Linq.Parallel.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Linq.Queryable.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Net.Http.Rtc.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Net.NameResolution.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Net.NetworkInformation.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Net.Ping.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Net.Primitives.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Net.Requests.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Net.Security.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Net.WebHeaderCollection.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Net.WebSockets.Client.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Net.WebSockets.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.ObjectModel.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Reflection.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Reflection.Emit.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Reflection.Emit.ILGeneration.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Reflection.Emit.Lightweight.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Reflection.Extensions.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Reflection.Primitives.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Resources.Reader.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Resources.ResourceManager.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Resources.Writer.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Runtime.CompilerServices.VisualC.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Runtime.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Runtime.Extensions.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Runtime.Handles.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Runtime.InteropServices.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Runtime.InteropServices.RuntimeInformation.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Runtime.InteropServices.WindowsRuntime.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Runtime.Numerics.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Runtime.Serialization.Formatters.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Runtime.Serialization.Json.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Runtime.Serialization.Xml.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Security.Claims.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Security.Cryptography.Csp.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Security.Cryptography.Encoding.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Security.Cryptography.Primitives.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Security.Cryptography.X509Certificates.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Security.Principal.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.ServiceModel.Duplex.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.ServiceModel.Http.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.ServiceModel.NetTcp.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.ServiceModel.Primitives.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.ServiceModel.Security.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Text.Encoding.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Text.Encoding.Extensions.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Text.RegularExpressions.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Threading.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Threading.Tasks.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Threading.Tasks.Parallel.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Threading.Thread.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Threading.ThreadPool.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Threading.Timer.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.ValueTuple.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Xml.ReaderWriter.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Xml.XDocument.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Xml.XmlDocument.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Xml.XmlSerializer.dll"
-                @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1\Facades\System.Xml.XPath.dll"
-            ])
+                    let references = a |> List.choose (fun o -> if o.StartsWith "-r:" then Some (o.Substring 3) else None) |> Set.ofList
+                    let files = 
+                        a 
+                        |> List.choose (fun o -> if not (o.StartsWith "-") then Some o else None)
+                        |> List.filter (fun f -> not (Path.GetFileName(f).ToLower().Trim().EndsWith "assemblyinfo.fs"))
+                        |> List.filter (fun f -> not (Path.GetFileName(f).ToLower().Trim().EndsWith "assemblyattributes.fs"))
 
-            [
-                @"Config.fs"
-                @"Model.fs"
-                @"Utilities.fs"
-                @"GuiEx.fs"
-                @"KdTrees.fs"
-                @"ReferenceSystem-Model.fs"
-                @"CooTransformation.fs"
-                @"DipAndStrike.fs"
-                @"ReferenceSystem.fs"
-                @"Surface-Model.fs"
-                @"Navigation-Model.fs"
-                @"Bookmark-Model.fs"
-                @"Csv.fs"
-                @"GroupsModels.fs"
-                @"Groups.fs"
-                @"Drawing-Properties.fs"
-                @"Drawing\Drawing-Model.fs"
-                @"Drawing\Drawing.fs"
-                @"MeasurementsImporter.fs"
-                @"Navigation.fs"
-                @"AlignmentModel.fs"
-                @"AlignmentApp.fs"
-                @"Surface-Properties.fs"
-                @"Surface.fs"
-                @"Rover-Model.fs"
-                @"Rover.fs"
-                @"ViewPlan.fs"
-                @"Properties.fs"
-                @"ConfigTestModel.fs"
-                @"ConfigTest.fs"
-                @"Viewer-Model.fs"
-                @"Bookmarks.fs"
-                @"Scene.fs"
-                @"LensConfigs.fs"
-                @"AnnotationGroupsImporter.fs"
-                @"SurfaceTrafoImporter.fs"
-                @"Viewer-Utils.fs"
-                @"Viewer.fs"
-                @"RemoteControlModel.fs"
-                @"RemoteControlApp.fs"
-                @"Program.fs"
-            ]
+                    let targetType =
+                        a 
+                        |> List.tryPick (fun o ->
+                            if o.StartsWith "--target:" then
+                                let t = o.Substring(9).ToLower().Trim()
+                                match t with
+                                | "exe" -> Some TargetType.Exe
+                                | "winexe" -> Some TargetType.WinExe
+                                | _ -> Some TargetType.Library
+                            else
+                                None
+                        )
+                        |> Option.defaultValue TargetType.Library
 
-    let sw = System.Diagnostics.Stopwatch.StartNew()
-    let res = Async.RunSynchronously run
-    sw.Stop()
+                    let res = 
+                        Preprocessing.runFileByFile 
+                            (not netcore)
+                            log
+                            file
+                            targetType
+                            references
+                            files
 
-    printfn "took: %.3fs" sw.Elapsed.TotalSeconds
+                    match Async.RunSynchronously res with
+                    | Some generated -> 
+                        let old = files |> Seq.map (fun f -> Path.GetFullPath(Path.Combine(dir, f))) |> Set.ofSeq
+                        let gen = 
+                            generated 
+                            |> Array.filter (fun f -> not (Set.contains (Path.GetFullPath f) old)) 
+                            |> Array.map Path.GetFileName
 
-    System.GC.Collect()
-    System.GC.WaitForFullGCComplete() |> ignore
-    Console.ReadLine() |> ignore
-    
-    System.GC.Collect()
-    System.GC.WaitForFullGCComplete() |> ignore
-    Console.ReadLine() |> ignore
+                        if gen.Length > 0 then
+                            Log.start "generated"
+                            for g in gen do Log.line "%s" g
+                            Log.stop()
+                        else
+                            Log.line "nothing generated"
+                        
+                    | None ->
+                        Log.error "failed"
+                        status <- -1
+                
+                | Result.Ok _ -> 
+                    Log.error "failed"
+                    status <- -1
 
-    printfn "RESULT: %A" res
-    0 // return an integer exit code
+                | Result.Error err ->
+                    match err with
+                    | Inspect.GetProjectInfoErrors.MSBuildFailed(code,(_,exe,cmd)) ->
+                        Log.error "msbuild failed: %d" code
+                        Log.error "%s %s" exe cmd
+                    | Inspect.GetProjectInfoErrors.UnexpectedMSBuildResult(str) ->
+                        Log.error "msbuild failed: %s" str
+                    | Inspect.GetProjectInfoErrors.MSBuildSkippedTarget ->
+                        Log.error "msbuild failed"
+                        
+                    status <- -1
+                Log.stop()
+            else
+                status <- -2
+        status

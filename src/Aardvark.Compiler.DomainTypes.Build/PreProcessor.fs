@@ -2,12 +2,10 @@
 
 open System
 open System.IO
-open Microsoft.Build.Framework
-open Microsoft.Build.Utilities
 open CodeGen
-open Microsoft.FSharp.Compiler
-open Microsoft.FSharp.Compiler.SourceCodeServices 
 open System.Collections.Concurrent
+open FSharp.Compiler
+open FSharp.Compiler.SourceCodeServices
         
 module List =
     let rec mapOption (f : 'a -> Option<'b>) (l : list<'a>) =
@@ -1993,7 +1991,10 @@ module Preprocessing =
                         modified <- true
 
                         sw.Restart()
-                        let! (parse, check) = checker.ParseAndCheckFileInProject(file, 0, File.ReadAllText file, options)
+
+                        
+
+                        let! (parse, check) = checker.ParseAndCheckFileInProject(file, 0, Text.SourceText.ofString (File.ReadAllText file), options)
                         sw.Stop()
                         
                         log {
@@ -2216,7 +2217,7 @@ module Preprocessing =
 
             let originalFiles = options.SourceFiles
             for file in originalFiles do
-                let! (parse, check) = checker.ParseAndCheckFileInProject(file, 0, File.ReadAllText file, options)
+                let! (parse, check) = checker.ParseAndCheckFileInProject(file, 0, Text.SourceText.ofString (File.ReadAllText file), options)
                 match check with
                     | FSharpCheckFileAnswer.Succeeded answer ->
                         match answer.ImplementationFile with

@@ -6,8 +6,8 @@ open System.IO
 open CodeGen
 open Microsoft.Build.Framework
 open Microsoft.Build.Utilities
-open Microsoft.FSharp.Compiler
-open Microsoft.FSharp.Compiler.SourceCodeServices
+open FSharp.Compiler
+open FSharp.Compiler.SourceCodeServices
     
 [<AutoOpen>]
 module Extensions =
